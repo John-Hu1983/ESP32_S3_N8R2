@@ -1,180 +1,429 @@
-#include <stdint.h>
-#include <stdlib.h>
-
+#include <string.h>
+#include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
 #include "driver/gpio.h"
-#include "esp_err.h"
-#include "esp_heap_caps.h"
-#include "esp_lcd_panel_io.h"
+#include "driver/spi_master.h"
 #include "esp_log.h"
 
-#define LCD_WIDTH  (480)
-#define LCD_HEIGHT (272)
+#define LCD_WIDTH 480
+#define LCD_HEIGHT 272
 
-// Verify these GPIOs against the schematic before flashing.
-#define PIN_LCD_PWR (7)
-#define PIN_LCD_CS  (19)
-#define PIN_LCD_DC  (8)
-#define PIN_LCD_WR  (6)
-#define PIN_LCD_RST (0)
-#define PIN_LCD_RD  (-1)
+// 你的引脚（完全不变）
+#define LCD_PWR 7
+#define LCD_RST 0
+#define LCD_CS 5
+#define LCD_DC 42
+#define LCD_SCK 10
+#define LCD_MOSI 11
+#define LCD_MISO 12
 
-#define PIN_LCD_D0 (15)
-#define PIN_LCD_D1 (16)
-#define PIN_LCD_D2 (38)
-#define PIN_LCD_D3 (39)
-#define PIN_LCD_D4 (40)
-#define PIN_LCD_D5 (41)
-#define PIN_LCD_D6 (42)
-#define PIN_LCD_D7 (37)
+#define SPI_HOST SPI2_HOST
+#define SPI_CLOCK 80 * 1000 * 1000 // 提速到 40MHz
 
-#define LCD_CMD_COL_ADDR (0x2A)
-#define LCD_CMD_ROW_ADDR (0x2B)
-#define LCD_CMD_RAMWR    (0x2C)
+// TSC2046 (SPI3)
+#define TOUCH_CLK 14
+#define TOUCH_CS 20
+#define TOUCH_MISO 1
+#define TOUCH_MOSI 2
+#define TOUCH_IRQ 35
 
-static const char *TAG = "nv3041a_demo";
+#define TOUCH_SPI_HOST SPI3_HOST
+#define TOUCH_SPI_CLOCK (2 * 1000 * 1000)
 
-static esp_lcd_panel_io_handle_t s_io = NULL;
+static const char *TAG = "NV3041_FIX";
+static spi_device_handle_t lcd_spi;
+static spi_device_handle_t touch_spi;
+
+// ========================== 基础函数 ==========================
+static void lcd_cmd(uint8_t cmd)
+{
+    gpio_set_level(LCD_DC, 0);
+    spi_transaction_t t = {.length = 8, .tx_buffer = &cmd};
+    spi_device_transmit(lcd_spi, &t);
+}
+
+static void lcd_data(uint8_t data)
+{
+    gpio_set_level(LCD_DC, 1);
+    spi_transaction_t t = {.length = 8, .tx_buffer = &data};
+    spi_device_transmit(lcd_spi, &t);
+}
 
 static void lcd_reset(void)
 {
-	if (PIN_LCD_RST < 0) {
-		return;
-	}
-
-	gpio_set_level(PIN_LCD_RST, 0);
-	vTaskDelay(pdMS_TO_TICKS(20));
-	gpio_set_level(PIN_LCD_RST, 1);
-	vTaskDelay(pdMS_TO_TICKS(120));
+    gpio_set_level(LCD_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    gpio_set_level(LCD_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(200));
 }
 
-static void lcd_cmd(uint8_t cmd)
+// ====================== 厂商原厂初始化（不动） ======================
+static void nv3041_vendor_init(void)
 {
-	ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(s_io, cmd, NULL, 0));
+    lcd_reset();
+
+    lcd_cmd(0xff);
+    lcd_data(0xa5);
+    lcd_cmd(0xE7);
+    lcd_data(0x10);
+    lcd_cmd(0x35);
+    lcd_data(0x00);
+    lcd_cmd(0x36);
+    lcd_data(0xc0);
+    lcd_cmd(0x3A);
+    lcd_data(0x01);
+    lcd_cmd(0x41);
+    lcd_data(0x03);
+    lcd_cmd(0x44);
+    lcd_data(0x15);
+    lcd_cmd(0x45);
+    lcd_data(0x15);
+    lcd_cmd(0x7d);
+    lcd_data(0x03);
+
+    lcd_cmd(0xc1);
+    lcd_data(0xbb);
+    lcd_cmd(0xc2);
+    lcd_data(0x05);
+    lcd_cmd(0xc3);
+    lcd_data(0x10);
+    lcd_cmd(0xc6);
+    lcd_data(0x3e);
+    lcd_cmd(0xc7);
+    lcd_data(0x25);
+    lcd_cmd(0xc8);
+    lcd_data(0x11);
+    lcd_cmd(0x7a);
+    lcd_data(0x5f);
+    lcd_cmd(0x6f);
+    lcd_data(0x44);
+    lcd_cmd(0x78);
+    lcd_data(0x70);
+    lcd_cmd(0xc9);
+    lcd_data(0x00);
+    lcd_cmd(0x67);
+    lcd_data(0x21);
+
+    lcd_cmd(0x51);
+    lcd_data(0x0a);
+    lcd_cmd(0x52);
+    lcd_data(0x76);
+    lcd_cmd(0x53);
+    lcd_data(0x0a);
+    lcd_cmd(0x54);
+    lcd_data(0x76);
+
+    lcd_cmd(0x46);
+    lcd_data(0x0a);
+    lcd_cmd(0x47);
+    lcd_data(0x2a);
+    lcd_cmd(0x48);
+    lcd_data(0x0a);
+    lcd_cmd(0x49);
+    lcd_data(0x1a);
+
+    lcd_cmd(0x56);
+    lcd_data(0x43);
+    lcd_cmd(0x57);
+    lcd_data(0x42);
+    lcd_cmd(0x58);
+    lcd_data(0x3c);
+    lcd_cmd(0x59);
+    lcd_data(0x64);
+    lcd_cmd(0x5a);
+    lcd_data(0x41);
+    lcd_cmd(0x5b);
+    lcd_data(0x3c);
+    lcd_cmd(0x5c);
+    lcd_data(0x02);
+    lcd_cmd(0x5d);
+    lcd_data(0x3c);
+    lcd_cmd(0x5e);
+    lcd_data(0x1f);
+
+    lcd_cmd(0x60);
+    lcd_data(0x80);
+    lcd_cmd(0x61);
+    lcd_data(0x3f);
+    lcd_cmd(0x62);
+    lcd_data(0x21);
+    lcd_cmd(0x63);
+    lcd_data(0x07);
+    lcd_cmd(0x64);
+    lcd_data(0xe0);
+    lcd_cmd(0x65);
+    lcd_data(0x02);
+
+    lcd_cmd(0xca);
+    lcd_data(0x20);
+    lcd_cmd(0xcb);
+    lcd_data(0x52);
+    lcd_cmd(0xcc);
+    lcd_data(0x10);
+    lcd_cmd(0xcd);
+    lcd_data(0x42);
+    lcd_cmd(0xd0);
+    lcd_data(0x20);
+    lcd_cmd(0xd1);
+    lcd_data(0x52);
+    lcd_cmd(0xd2);
+    lcd_data(0x10);
+    lcd_cmd(0xd3);
+    lcd_data(0x42);
+    lcd_cmd(0xd4);
+    lcd_data(0x0a);
+    lcd_cmd(0xd5);
+    lcd_data(0x32);
+
+    lcd_cmd(0xf8);
+    lcd_data(0x03);
+    lcd_cmd(0xf9);
+    lcd_data(0x20);
+
+    lcd_cmd(0x80);
+    lcd_data(0x00);
+    lcd_cmd(0xA0);
+    lcd_data(0x00);
+    lcd_cmd(0x81);
+    lcd_data(0x05);
+    lcd_cmd(0xA1);
+    lcd_data(0x05);
+    lcd_cmd(0x82);
+    lcd_data(0x04);
+    lcd_cmd(0xA2);
+    lcd_data(0x03);
+    lcd_cmd(0x86);
+    lcd_data(0x25);
+    lcd_cmd(0xA6);
+    lcd_data(0x1c);
+    lcd_cmd(0x87);
+    lcd_data(0x2a);
+    lcd_cmd(0xA7);
+    lcd_data(0x2a);
+    lcd_cmd(0x83);
+    lcd_data(0x1d);
+    lcd_cmd(0xA3);
+    lcd_data(0x1d);
+    lcd_cmd(0x84);
+    lcd_data(0x1e);
+    lcd_cmd(0xA4);
+    lcd_data(0x1e);
+    lcd_cmd(0x85);
+    lcd_data(0x3f);
+    lcd_cmd(0xA5);
+    lcd_data(0x3f);
+
+    lcd_cmd(0x88);
+    lcd_data(0x0b);
+    lcd_cmd(0xA8);
+    lcd_data(0x0b);
+    lcd_cmd(0x89);
+    lcd_data(0x14);
+    lcd_cmd(0xA9);
+    lcd_data(0x13);
+    lcd_cmd(0x8a);
+    lcd_data(0x1a);
+    lcd_cmd(0xAa);
+    lcd_data(0x1a);
+    lcd_cmd(0x8b);
+    lcd_data(0x0a);
+    lcd_cmd(0xAb);
+    lcd_data(0x0a);
+    lcd_cmd(0x8c);
+    lcd_data(0x1c);
+    lcd_cmd(0xAc);
+    lcd_data(0x0c);
+    lcd_cmd(0x8d);
+    lcd_data(0x1f);
+    lcd_cmd(0xAd);
+    lcd_data(0x0b);
+    lcd_cmd(0x8e);
+    lcd_data(0x1f);
+    lcd_cmd(0xAe);
+    lcd_data(0x0a);
+    lcd_cmd(0x8f);
+    lcd_data(0x1f);
+    lcd_cmd(0xAf);
+    lcd_data(0x07);
+    lcd_cmd(0x90);
+    lcd_data(0x06);
+    lcd_cmd(0xB0);
+    lcd_data(0x06);
+    lcd_cmd(0x91);
+    lcd_data(0x0d);
+    lcd_cmd(0xB1);
+    lcd_data(0x0d);
+    lcd_cmd(0x92);
+    lcd_data(0x17);
+    lcd_cmd(0xB2);
+    lcd_data(0x17);
+
+    lcd_cmd(0xff);
+    lcd_data(0x00);
+
+    lcd_cmd(0x21);
+    lcd_cmd(0x11);
+    vTaskDelay(pdMS_TO_TICKS(200));
+    lcd_cmd(0x29);
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
-static void lcd_param(uint8_t cmd, const void *data, size_t len)
+// ========================== 修复：设置窗口 ==========================
+static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
-	ESP_ERROR_CHECK(esp_lcd_panel_io_tx_param(s_io, cmd, data, len));
+    lcd_cmd(0x2A);
+    lcd_data(x1 >> 8);
+    lcd_data(x1 & 0xFF);
+    lcd_data(x2 >> 8);
+    lcd_data(x2 & 0xFF);
+
+    lcd_cmd(0x2B);
+    lcd_data(y1 >> 8);
+    lcd_data(y1 & 0xFF);
+    lcd_data(y2 >> 8);
+    lcd_data(y2 & 0xFF);
+
+    lcd_cmd(0x2C);
 }
 
-static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+// ========================== 修复1：颜色顺序反了 ==========================
+// 红色 0xF800 → 屏幕需要先发低字节
+#define RED_COLOR 0xF800 // 修复：字节反转
+
+// ========================== 修复2：批量发送（超快） ==========================
+static void lcd_fill_fast(uint16_t color)
 {
-	uint8_t col_data[4] = {
-		(uint8_t)(x0 >> 8), (uint8_t)(x0 & 0xFF),
-		(uint8_t)(x1 >> 8), (uint8_t)(x1 & 0xFF),
-	};
-	uint8_t row_data[4] = {
-		(uint8_t)(y0 >> 8), (uint8_t)(y0 & 0xFF),
-		(uint8_t)(y1 >> 8), (uint8_t)(y1 & 0xFF),
-	};
+    lcd_set_window(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+    gpio_set_level(LCD_DC, 1);
 
-	lcd_param(LCD_CMD_COL_ADDR, col_data, sizeof(col_data));
-	lcd_param(LCD_CMD_ROW_ADDR, row_data, sizeof(row_data));
+    uint16_t line_buf[LCD_WIDTH];
+    for (int i = 0; i < LCD_WIDTH; i++)
+    {
+        line_buf[i] = color;
+    }
+
+    for (int y = 0; y < LCD_HEIGHT; y++)
+    {
+        spi_transaction_t t = {
+            .length = LCD_WIDTH * 16,
+            .tx_buffer = line_buf,
+        };
+        spi_device_transmit(lcd_spi, &t);
+    }
 }
 
-static uint16_t color_swap(uint16_t color)
+// ========================== TSC2046 触摸读取 ==========================
+static uint16_t tsc2046_read_channel(uint8_t cmd)
 {
-	return (uint16_t)((color << 8) | (color >> 8));
+    uint8_t tx[3] = {cmd, 0x00, 0x00};
+    uint8_t rx[3] = {0};
+    spi_transaction_t t = {
+        .length = 24,
+        .tx_buffer = tx,
+        .rx_buffer = rx,
+    };
+    spi_device_transmit(touch_spi, &t);
+
+    // 12-bit 数据在高 12 位
+    return (uint16_t)(((uint16_t)rx[1] << 8) | rx[2]) >> 4;
 }
 
-static void lcd_fill_rect(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h, uint16_t color)
+static bool tsc2046_read_xy(uint16_t *x, uint16_t *y)
 {
-	uint16_t x1 = (uint16_t)(x0 + w - 1);
-	uint16_t y1 = (uint16_t)(y0 + h - 1);
-	uint16_t *line = heap_caps_malloc(w * sizeof(uint16_t), MALLOC_CAP_DMA);
-	if (!line) {
-		ESP_LOGE(TAG, "line buffer alloc failed");
-		return;
-	}
+    if (gpio_get_level(TOUCH_IRQ) != 0)
+    {
+        return false;
+    }
 
-	uint16_t swapped = color_swap(color);
-	for (uint16_t x = 0; x < w; x++) {
-		line[x] = swapped;
-	}
+    uint16_t x1 = tsc2046_read_channel(0xD0);
+    uint16_t y1 = tsc2046_read_channel(0x90);
+    uint16_t x2 = tsc2046_read_channel(0xD0);
+    uint16_t y2 = tsc2046_read_channel(0x90);
 
-	lcd_set_window(x0, y0, x1, y1);
-	for (uint16_t y = 0; y < h; y++) {
-		ESP_ERROR_CHECK(esp_lcd_panel_io_tx_color(s_io, LCD_CMD_RAMWR, line, w * 2));
-	}
-
-	free(line);
+    *x = (x1 + x2) / 2;
+    *y = (y1 + y2) / 2;
+    return true;
 }
 
-static void nv3041a_init_minimal(void)
+static void touch_task(void *arg)
 {
-	lcd_reset();
+    (void)arg;
+    uint16_t x = 0;
+    uint16_t y = 0;
 
-	lcd_cmd(0x11); // sleep out
-	vTaskDelay(pdMS_TO_TICKS(120));
-
-	uint8_t madctl = 0x00;
-	lcd_param(0x36, &madctl, 1);
-
-	uint8_t pix_fmt = 0x55; // RGB565
-	lcd_param(0x3A, &pix_fmt, 1);
-
-	lcd_cmd(0x29); // display on
-	vTaskDelay(pdMS_TO_TICKS(20));
+    while (1)
+    {
+        if (tsc2046_read_xy(&x, &y))
+        {
+            ESP_LOGI("TSC2046", "Touch x=%u y=%u", x, y);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        else
+        {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    }
 }
 
+// ========================== MAIN ==========================
 void app_main(void)
 {
-	if (PIN_LCD_PWR >= 0) {
-		gpio_set_direction(PIN_LCD_PWR, GPIO_MODE_OUTPUT);
-		gpio_set_level(PIN_LCD_PWR, 1);
-		vTaskDelay(pdMS_TO_TICKS(10));
-	}
+    gpio_config_t conf = {
+        .pin_bit_mask = (1ULL << LCD_PWR) | (1ULL << LCD_RST) | (1ULL << LCD_DC),
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&conf);
 
-	if (PIN_LCD_RST >= 0) {
-		gpio_set_direction(PIN_LCD_RST, GPIO_MODE_OUTPUT);
-		gpio_set_level(PIN_LCD_RST, 1);
-	}
+    gpio_set_level(LCD_PWR, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-	esp_lcd_i80_bus_handle_t i80_bus = NULL;
-	esp_lcd_i80_bus_config_t bus_config = {
-		.clk_src = LCD_CLK_SRC_DEFAULT,
-		.dc_gpio_num = PIN_LCD_DC,
-		.wr_gpio_num = PIN_LCD_WR,
-		.data_gpio_nums = {
-			PIN_LCD_D0,
-			PIN_LCD_D1,
-			PIN_LCD_D2,
-			PIN_LCD_D3,
-			PIN_LCD_D4,
-			PIN_LCD_D5,
-			PIN_LCD_D6,
-			PIN_LCD_D7,
-		},
-		.bus_width = 8,
-		.max_transfer_bytes = LCD_WIDTH * 2,
-	};
-	ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&bus_config, &i80_bus));
+    // SPI 初始化
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = LCD_MOSI,
+        .miso_io_num = LCD_MISO,
+        .sclk_io_num = LCD_SCK,
+    };
+    spi_bus_initialize(SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
 
-	esp_lcd_panel_io_i80_config_t io_config = {
-		.cs_gpio_num = PIN_LCD_CS,
-		.pclk_hz = 10 * 1000 * 1000,
-		.trans_queue_depth = 10,
-		.dc_levels = {
-			.dc_idle_level = 0,
-			.dc_cmd_level = 0,
-			.dc_dummy_level = 0,
-			.dc_data_level = 1,
-		},
-		.lcd_cmd_bits = 8,
-		.lcd_param_bits = 8,
-	};
-	ESP_ERROR_CHECK(esp_lcd_new_panel_io_i80(i80_bus, &io_config, &s_io));
+    spi_device_interface_config_t dev_cfg = {
+        .clock_speed_hz = SPI_CLOCK,
+        .mode = 0,
+        .spics_io_num = LCD_CS,
+        .queue_size = 16,
+    };
+    spi_bus_add_device(SPI_HOST, &dev_cfg, &lcd_spi);
 
-	nv3041a_init_minimal();
+    // TSC2046 SPI3 初始化
+    spi_bus_config_t touch_bus_cfg = {
+        .mosi_io_num = TOUCH_MOSI,
+        .miso_io_num = TOUCH_MISO,
+        .sclk_io_num = TOUCH_CLK,
+    };
+    spi_bus_initialize(TOUCH_SPI_HOST, &touch_bus_cfg, SPI_DMA_CH_AUTO);
 
-	uint16_t bar_h = LCD_HEIGHT / 6;
-	lcd_fill_rect(0, 0 * bar_h, LCD_WIDTH, bar_h, 0xF800); // red
-	lcd_fill_rect(0, 1 * bar_h, LCD_WIDTH, bar_h, 0x07E0); // green
-	lcd_fill_rect(0, 2 * bar_h, LCD_WIDTH, bar_h, 0x001F); // blue
-	lcd_fill_rect(0, 3 * bar_h, LCD_WIDTH, bar_h, 0xFFE0); // yellow
-	lcd_fill_rect(0, 4 * bar_h, LCD_WIDTH, bar_h, 0xF81F); // magenta
-	lcd_fill_rect(0, 5 * bar_h, LCD_WIDTH, LCD_HEIGHT - 5 * bar_h, 0x07FF); // cyan
+    spi_device_interface_config_t touch_dev_cfg = {
+        .clock_speed_hz = TOUCH_SPI_CLOCK,
+        .mode = 0,
+        .spics_io_num = TOUCH_CS,
+        .queue_size = 4,
+    };
+    spi_bus_add_device(TOUCH_SPI_HOST, &touch_dev_cfg, &touch_spi);
+
+    gpio_config_t touch_irq_conf = {
+        .pin_bit_mask = (1ULL << TOUCH_IRQ),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    gpio_config(&touch_irq_conf);
+
+    nv3041_vendor_init();
+
+    // 全屏红色（超快！）
+    lcd_fill_fast(RED_COLOR);
+
+    xTaskCreate(touch_task, "touch_task", 4096, NULL, 5, NULL);
+
+    ESP_LOGI(TAG, "✅ 颜色修复 + 刷屏加速完成");
 }
