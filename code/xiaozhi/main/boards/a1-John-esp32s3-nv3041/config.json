@@ -1,0 +1,9 @@
+{
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "a1-John-esp32s3-nv3041",
+            "sdkconfig_append": []
+        }
+    ]
+}
