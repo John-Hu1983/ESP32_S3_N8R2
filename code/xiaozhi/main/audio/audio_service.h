@@ -130,9 +130,12 @@ public:
     bool PushPacketToDecodeQueue(std::unique_ptr<AudioStreamPacket> packet, bool wait = false);
     std::unique_ptr<AudioStreamPacket> PopPacketFromSendQueue();
     void PlaySound(const std::string_view& sound);
+    void PlayPcm(std::vector<int16_t>&& data, bool wait = true);
     bool ReadAudioData(std::vector<int16_t>& data, int sample_rate, int samples);
     void ResetDecoder();
     void SetModelsList(srmodel_list_t* models_list);
+
+    int GetOutputSampleRate() const { return codec_ ? codec_->output_sample_rate() : 0; }
 
 private:
     AudioCodec* codec_ = nullptr;

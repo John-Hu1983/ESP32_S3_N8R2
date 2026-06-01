@@ -3,6 +3,7 @@
 #include "display.h"
 #include "system_info.h"
 #include "audio_codec.h"
+#include "audio_self_test.h"
 #include "mqtt_protocol.h"
 #include "websocket_protocol.h"
 #include "assets/lang_config.h"
@@ -84,6 +85,14 @@ void Application::Initialize() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_VAD_CHANGE);
     };
     audio_service_.SetCallbacks(callbacks);
+
+#if CONFIG_BOARD_TYPE_A1_JOHN_ESP32S3_NV3041
+    audio_service_.PlaySound(Lang::Sounds::OGG_WELCOME);
+    AudioSelfTest::Config self_test_cfg;
+    self_test_cfg.duration_ms = 6000;
+    self_test_cfg.chart_points = 128;
+    AudioSelfTest::Start(&audio_service_, display, self_test_cfg);
+#endif
 
     // Add state change listeners
     state_machine_.AddStateChangeListener([this](DeviceState old_state, DeviceState new_state) {
