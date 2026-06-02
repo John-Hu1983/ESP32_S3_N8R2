@@ -135,6 +135,7 @@ public:
     void ResetDecoder();
     void SetModelsList(srmodel_list_t* models_list);
 
+    bool IsInitialized() const { return codec_ != nullptr; }
     int GetOutputSampleRate() const { return codec_ ? codec_->output_sample_rate() : 0; }
 
 private:

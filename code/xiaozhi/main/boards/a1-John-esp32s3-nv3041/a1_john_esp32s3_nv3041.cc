@@ -1,7 +1,9 @@
-#include "application.h"
 #include "a1_john_no_audio_codec_duplex.h"
+#include "application.h"
 #include "button.h"
 #include "config.h"
+#include "customize/test_myself/test_self_mic.h"
+#include "customize/test_myself/test_self_speaker.h"
 #include "display/lcd_display.h"
 #include "wifi_board.h"
 
@@ -74,7 +76,7 @@ private:
         io_config.cs_gpio_num = DISPLAY_CS_PIN;
         io_config.dc_gpio_num = DISPLAY_DC_PIN;
         io_config.spi_mode = DISPLAY_SPI_MODE;
-        io_config.pclk_hz = 40 * 1000 * 1000;
+        io_config.pclk_hz = 80 * 1000 * 1000;
         io_config.trans_queue_depth = 10;
         io_config.lcd_cmd_bits = 8;
         io_config.lcd_param_bits = 8;
@@ -123,6 +125,14 @@ public:
         InitializeSpi();
         InitializeLcdDisplay();
         InitializeButtons();
+#if TEST_MIC
+        Application::GetInstance().SetWakeWordDisabled(true);
+        StartMicSelfTestTask();
+#endif
+
+#if TEST_SPEAKER
+        StartSpeakerSelfTestTask(&Application::GetInstance().GetAudioService());
+#endif
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();
         }

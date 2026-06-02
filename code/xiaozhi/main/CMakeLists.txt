@@ -36,6 +36,8 @@ set(SOURCES "audio/audio_codec.cc"
             "settings.cc"
             "device_state_machine.cc"
             "assets.cc"
+            "customize/test_myself/test_self_mic.cc"
+            "customize/test_myself/test_self_speaker.cc"
             "main.cc"
             )
 

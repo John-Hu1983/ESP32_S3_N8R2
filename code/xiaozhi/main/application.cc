@@ -3,17 +3,13 @@
 #include "assets/lang_config.h"
 #include "audio_codec.h"
 #include "board.h"
+#include "customize/test_myself/test_self_mic.h"
 #include "display.h"
 #include "mcp_server.h"
 #include "mqtt_protocol.h"
 #include "settings.h"
 #include "system_info.h"
 #include "websocket_protocol.h"
-
-#define TEST_MIC 1
-#if TEST_MIC
-#include "boards/a1-John-esp32s3-nv3041/a1_john_no_audio_codec_duplex.h"
-#endif
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -25,165 +21,6 @@
 #include <vector>
 
 #define TAG "Application"
-
-// namespace {
-// void ContinuousSpeakerTask(void* arg) {
-//     auto& board = Board::GetInstance();
-//     auto* audio_service = static_cast<AudioService*>(arg);
-//     auto ht517 = board.GetAudioCodec();
-//     while (true) {
-//         audio_service->PlaySound(Lang::Sounds::OGG_WELCOME);
-//         audio_service->WaitForPlaybackQueueEmpty();
-//         vTaskDelay(pdMS_TO_TICKS(200));
-//         ESP_LOGI(TAG, "volume = %d", ht517->output_volume());
-//     }
-// }
-
-// void StartContinuousSpeakerTest(AudioService* audio_service) {
-//     xTaskCreate(ContinuousSpeakerTask, "speaker_test", 4096, audio_service, 4, nullptr);
-// }
-// }  // namespace
-
-#if TEST_MIC
-namespace {
-void MicSelfTestTask(void* arg) {
-    (void)arg;
-    auto& audio_service = Application::GetInstance().GetAudioService();
-    auto* codec = static_cast<A1JohnNoAudioCodecDuplex*>(Board::GetInstance().GetAudioCodec());
-    if (codec == nullptr) {
-        return;
-    }
-
-    esp_log_level_set(TAG, ESP_LOG_INFO);
-    ESP_LOGI(TAG, "Mic raw logging task start");
-
-    auto* base_codec = static_cast<AudioCodec*>(codec);
-    int sample_rate = base_codec->input_sample_rate();
-    int samples_per_read = 256;
-    const int kWaveUpdateDelayMs = 20;
-    std::vector<int16_t> samples;
-
-#if HAVE_LVGL
-    Display* display = Board::GetInstance().GetDisplay();
-    lv_obj_t* line = nullptr;
-    lv_obj_t* label = nullptr;
-    const int point_count = 320;
-    std::vector<lv_point_precise_t> points(point_count);
-    std::vector<int16_t> wave_buffer(point_count, 0);
-    int write_index = 0;
-    int32_t scale_peak = 1;
-    int plot_width = 0;
-    int plot_height = 0;
-    int plot_x = 0;
-    int plot_y = 0;
-
-    if (display != nullptr) {
-        DisplayLockGuard lock(display);
-        lv_obj_t* screen = lv_scr_act();
-        plot_width = display->width();
-        plot_height = display->height() * 2 / 3;
-        plot_x = 0;
-        plot_y = (display->height() - plot_height) / 2;
-
-        line = lv_line_create(screen);
-        lv_obj_set_pos(line, plot_x, plot_y);
-        lv_obj_set_style_line_width(line, 2, LV_PART_MAIN);
-        lv_obj_set_style_line_color(line, lv_color_hex(0x00FF00), LV_PART_MAIN);
-
-        label = lv_label_create(screen);
-        lv_label_set_text(label, "MIC WAVEFORM");
-        lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 6);
-    }
-#endif
-
-    while (true) {
-        if (audio_service.ReadAudioData(samples, sample_rate, samples_per_read)) {
-            int16_t min_value = samples[0];
-            int16_t max_value = samples[0];
-            int64_t sum_abs = 0;
-            int32_t max_abs = 1;
-            for (size_t i = 0; i < samples.size(); ++i) {
-                int16_t value = samples[i];
-                if (value < min_value) {
-                    min_value = value;
-                }
-                if (value > max_value) {
-                    max_value = value;
-                }
-                int32_t abs_value = value;
-                if (abs_value < 0) {
-                    abs_value = -abs_value;
-                }
-                sum_abs += abs_value;
-                if (abs_value > max_abs) {
-                    max_abs = abs_value;
-                }
-            }
-            int avg_abs = static_cast<int>(sum_abs / samples.size());
-
-            char sample_text[192] = {0};
-            int offset = 0;
-            int log_count = samples.size() < 16 ? static_cast<int>(samples.size()) : 16;
-            for (int i = 0; i < log_count; ++i) {
-                int written = snprintf(sample_text + offset, sizeof(sample_text) - offset,
-                                       i == 0 ? "%d" : " %d", samples[static_cast<size_t>(i)]);
-                if (written < 0 || written >= static_cast<int>(sizeof(sample_text) - offset)) {
-                    break;
-                }
-                offset += written;
-            }
-
-            ESP_LOGI(TAG, "MIC: min=%d max=%d avg_abs=%d samples=%s", min_value, max_value, avg_abs,
-                     sample_text);
-
-#if HAVE_LVGL
-            if (display != nullptr && line != nullptr && plot_width > 0 && plot_height > 0) {
-                if (max_abs > scale_peak) {
-                    scale_peak = max_abs;
-                } else {
-                    scale_peak = (scale_peak * 9 + max_abs) / 10;
-                    if (scale_peak < 1) {
-                        scale_peak = 1;
-                    }
-                }
-
-                wave_buffer[write_index] = static_cast<int16_t>(avg_abs);
-                write_index = (write_index + 1) % point_count;
-
-                float scale = static_cast<float>(plot_height / 2 - 1) / static_cast<float>(scale_peak);
-                for (int i = 0; i < point_count; ++i) {
-                    int index = write_index + i;
-                    if (index >= point_count) {
-                        index -= point_count;
-                    }
-                    int x = (point_count <= 1) ? 0 : (i * (plot_width - 1)) / (point_count - 1);
-                    int y = plot_height / 2 - static_cast<int>(wave_buffer[static_cast<size_t>(index)] * scale);
-                    if (y < 0) {
-                        y = 0;
-                    } else if (y >= plot_height) {
-                        y = plot_height - 1;
-                    }
-                    points[static_cast<size_t>(i)].x = static_cast<lv_value_precise_t>(x);
-                    points[static_cast<size_t>(i)].y = static_cast<lv_value_precise_t>(y);
-                }
-                DisplayLockGuard lock(display);
-                lv_line_set_points(line, points.data(), point_count);
-                lv_obj_invalidate(line);
-            }
-#endif
-        } else {
-            ESP_LOGW(TAG, "MIC: read timeout");
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(kWaveUpdateDelayMs));
-    }
-}
-
-void StartMicSelfTestTask() {
-    xTaskCreate(MicSelfTestTask, "mic_self_test", 4096, nullptr, 3, nullptr);
-}
-}  // namespace
-#endif
 
 Application::Application() {
     event_group_ = xEventGroupCreate();
@@ -235,15 +72,6 @@ void Application::Initialize() {
     auto codec = board.GetAudioCodec();
     audio_service_.Initialize(codec);
     audio_service_.Start();
-    if (codec->output_volume() != 10) {
-        codec->SetOutputVolume(10);
-    }
-
-#if TEST_MIC
-    wake_word_disabled_ = true;
-    StartMicSelfTestTask();
-    SetWakeWordDetection(false);
-#endif
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
@@ -256,11 +84,6 @@ void Application::Initialize() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_VAD_CHANGE);
     };
     audio_service_.SetCallbacks(callbacks);
-
-    // #if TEST_MIC
-    // audio_service_.PlaySound(Lang::Sounds::OGG_WELCOME);
-    // StartContinuousSpeakerTest(&audio_service_);
-    // #endif
 
     // Add state change listeners
     state_machine_.AddStateChangeListener([this](DeviceState old_state, DeviceState new_state) {
@@ -821,6 +644,13 @@ void Application::SetWakeWordDetection(bool enable) {
         return;
     }
     audio_service_.EnableWakeWordDetection(enable);
+}
+
+void Application::SetWakeWordDisabled(bool disabled) {
+    wake_word_disabled_ = disabled;
+    if (disabled) {
+        SetWakeWordDetection(false);
+    }
 }
 
 void Application::Alert(const char* status, const char* message, const char* emotion,
