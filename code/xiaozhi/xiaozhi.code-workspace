@@ -1,34 +1,3 @@
 {
-	"folders": [
-		{
-			"path": "docs"
-		},
-		{
-			"path": "managed_components"
-		},
-		{
-			"path": "partitions"
-		},
-		{
-			"path": "scripts"
-		},
-		{
-			"path": "main/assets"
-		},
-		{
-			"path": "main/audio"
-		},
-		{
-			"path": "main/display"
-		},
-		{
-			"path": "main/led"
-		},
-		{
-			"path": "main/protocols"
-		},
-		{
-			"path": "main/boards/a1-John-esp32s3-nv3041"
-		}
-	]
+	"folders": []
 }

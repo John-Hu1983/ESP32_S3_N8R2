@@ -1,12 +1,11 @@
 #include "application.h"
+#include "a1_john_no_audio_codec_duplex.h"
 #include "button.h"
-#include "codecs/no_audio_codec.h"
 #include "config.h"
 #include "display/lcd_display.h"
 #include "wifi_board.h"
 
 #include <driver/gpio.h>
-#include <driver/i2s_std.h>
 #include <driver/spi_common.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
@@ -14,9 +13,6 @@
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <cmath>
-#include <limits>
-#include <vector>
 
 #if defined(__has_include)
 #if __has_include("esp_lcd_panel_nv3041.h")
@@ -32,108 +28,6 @@
 #endif
 
 #define TAG "A1JohnNv3041"
-class A1JohnNoAudioCodecDuplex : public NoAudioCodec {
-protected:
-    int Read(int16_t* dest, int samples) override {
-        size_t bytes_read = 0;
-        constexpr uint32_t kReadTimeoutMs = 200;
-        if (i2s_channel_read(rx_handle_, dest, samples * sizeof(int16_t), &bytes_read, kReadTimeoutMs) != ESP_OK) {
-            return 0;
-        }
-        return bytes_read / sizeof(int16_t);
-    }
-
-public:
-    A1JohnNoAudioCodecDuplex(int input_sample_rate, int output_sample_rate, gpio_num_t bclk, gpio_num_t ws, gpio_num_t dout, gpio_num_t din) {
-        duplex_ = true;
-        input_sample_rate_ = input_sample_rate;
-        output_sample_rate_ = output_sample_rate;
-        input_channels_ = 1;
-        output_channels_ = 2;  // Use stereo frame for HT517
-
-        i2s_chan_config_t chan_cfg = {
-            .id = I2S_NUM_0,
-            .role = I2S_ROLE_MASTER,
-            .dma_desc_num = AUDIO_CODEC_DMA_DESC_NUM,
-            .dma_frame_num = AUDIO_CODEC_DMA_FRAME_NUM,
-            .auto_clear_after_cb = true,
-            .auto_clear_before_cb = false,
-            .intr_priority = 0,
-        };
-        ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle_, &rx_handle_));
-
-        // Use stereo 16-bit slots (32fs); output data on both channels
-        i2s_std_config_t tx_cfg = {
-            .clk_cfg = {
-                .sample_rate_hz = (uint32_t)output_sample_rate_,
-                .clk_src = I2S_CLK_SRC_DEFAULT,
-                .mclk_multiple = I2S_MCLK_MULTIPLE_256,
-            },
-            .slot_cfg = {
-                .data_bit_width = I2S_DATA_BIT_WIDTH_16BIT,
-                .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
-                .slot_mode = I2S_SLOT_MODE_STEREO,
-                .slot_mask = I2S_STD_SLOT_BOTH,
-                .ws_width = I2S_DATA_BIT_WIDTH_16BIT,
-                .ws_pol = false,
-                .bit_shift = true,
-            },
-            .gpio_cfg = {
-                .mclk = I2S_GPIO_UNUSED,
-                .bclk = bclk,
-                .ws = ws,
-                .dout = dout,
-                .din = din,
-                .invert_flags = {
-                    .mclk_inv = false,
-                    .bclk_inv = false,
-                    .ws_inv = false
-                }
-            }
-        };
-
-        i2s_std_config_t rx_cfg = tx_cfg;
-        rx_cfg.clk_cfg.sample_rate_hz = (uint32_t)input_sample_rate_;
-        rx_cfg.slot_cfg.slot_mode = I2S_SLOT_MODE_MONO;
-        rx_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
-
-        ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle_, &tx_cfg));
-        ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &rx_cfg));
-        ESP_LOGI(TAG, "🔊 立体声 I2S 配置完成 (HT517 专用)");
-    }
-
-    void OutputData(std::vector<int16_t>& data) override {
-        if (data.empty()) return;
-
-        // output_volume_ is inherited from AudioCodec (0-100) and set via SetOutputVolume.
-        // We apply a squared curve to make low volumes more usable.
-        float volume = static_cast<float>(output_volume_) / 100.0f;
-        if (volume < 0.0f) {
-            volume = 0.0f;
-        } else if (volume > 1.0f) {
-            volume = 1.0f;
-        }
-        float gain = volume * volume;
-
-        std::vector<int16_t> interleaved;
-        interleaved.reserve(data.size() * 2);
-        for (int16_t sample : data) {
-            int32_t scaled = static_cast<int32_t>(sample * gain);
-            if (scaled > std::numeric_limits<int16_t>::max()) {
-                scaled = std::numeric_limits<int16_t>::max();
-            } else if (scaled < std::numeric_limits<int16_t>::min()) {
-                scaled = std::numeric_limits<int16_t>::min();
-            }
-            int16_t out = static_cast<int16_t>(scaled);
-            interleaved.push_back(out);
-            interleaved.push_back(out);
-        }
-
-        size_t bytes_written = 0;
-        i2s_channel_write(tx_handle_, interleaved.data(), interleaved.size() * sizeof(int16_t), &bytes_written,
-                          portMAX_DELAY);
-    }
-};
 class A1JohnEsp32S3Nv3041Board : public WifiBoard {
 private:
     Button boot_button_;
