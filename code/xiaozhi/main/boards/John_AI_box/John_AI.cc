@@ -110,7 +110,7 @@ private:
         io_config.cs_gpio_num = DISPLAY_CS_PIN;
         io_config.dc_gpio_num = DISPLAY_DC_PIN;
         io_config.spi_mode = DISPLAY_SPI_MODE;
-        io_config.pclk_hz = 80 * 1000 * 1000;
+        io_config.pclk_hz = 20 * 1000 * 1000;
         io_config.trans_queue_depth = 10;
         io_config.lcd_cmd_bits = 8;
         io_config.lcd_param_bits = 8;
@@ -153,6 +153,14 @@ private:
         });
     }
 
+    void DefaultVolume() {
+        Settings settings("audio", true);
+        int volume = settings.GetInt("output_volume", 10);
+        if (volume < 20) {
+            settings.SetInt("output_volume", 20);
+        }
+    }
+
 public:
     JohnAIBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializePeripheralsReset();
@@ -160,14 +168,7 @@ public:
         InitializeSpi();
         InitializeLcdDisplay();
         InitializeButtons();
-
-        {
-            Settings settings("audio", true);
-            int volume = settings.GetInt("output_volume", 10);
-            if (volume < 20) {
-                settings.SetInt("output_volume", 20);
-            }
-        }
+        DefaultVolume();
 
 #if SYSTEM_SUPERVISION_ENABLED
         StartSystemSurveyTask();
@@ -187,9 +188,9 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static Ht517Inmp441AudioCodec audio_codec(
-            AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_I2S_GPIO_BCLK,
-            AUDIO_I2S_GPIO_WS, AUDIO_I2S_GPIO_DOUT, AUDIO_I2S_GPIO_DIN);
+        static Ht517Inmp441AudioCodec audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
+                                                  AUDIO_I2S_GPIO_BCLK, AUDIO_I2S_GPIO_WS,
+                                                  AUDIO_I2S_GPIO_DOUT, AUDIO_I2S_GPIO_DIN);
         return &audio_codec;
     }
 

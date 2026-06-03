@@ -3,6 +3,7 @@
 #include "assets/lang_config.h"
 #include "audio_codec.h"
 #include "board.h"
+#include "customize/application/user_main.h"
 #include "customize/test_myself/test_self_mic.h"
 #include "display.h"
 #include "mcp_server.h"
@@ -164,6 +165,8 @@ void Application::Initialize() {
 
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
+
+    StartUserMainTask();
 }
 
 void Application::Run() {
