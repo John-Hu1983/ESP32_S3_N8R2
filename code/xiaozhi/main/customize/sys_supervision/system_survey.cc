@@ -10,6 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#if SYSTEM_SUPERVISION_ENABLED
 #define TAG "SystemSurvey"
 #define SYSTEM_SURVEY_PERIOD_MS 500
 
@@ -119,3 +120,6 @@ void StartSystemSurveyTask() {
     });
     xTaskCreate(SystemSurveyTask, "system_survey", 4096, nullptr, 2, nullptr);
 }
+#else
+void StartSystemSurveyTask() {}
+#endif

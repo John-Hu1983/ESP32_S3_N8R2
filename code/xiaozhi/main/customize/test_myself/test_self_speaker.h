@@ -1,6 +1,8 @@
 #pragma once
 
-#define TEST_SPEAKER 1
+#ifndef TEST_SPEAKER
+#define TEST_SPEAKER 0
+#endif
 
 class AudioService;
 
