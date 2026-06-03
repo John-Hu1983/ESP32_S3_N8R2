@@ -12,11 +12,10 @@
 
 #define TAG "SpeakerSelfTest"
 
-namespace {
-void SpeakerSelfTestTask(void* arg) {
-    auto& board = Board::GetInstance();
-    auto* audio_service = static_cast<AudioService*>(arg);
-    auto* codec = board.GetAudioCodec();
+static void SpeakerSelfTestTask(void* arg) {
+    Board& board = Board::GetInstance();
+    AudioService* audio_service = static_cast<AudioService*>(arg);
+    AudioCodec* codec = board.GetAudioCodec();
     if (audio_service == nullptr || codec == nullptr) {
         return;
     }
@@ -32,7 +31,6 @@ void SpeakerSelfTestTask(void* arg) {
         ESP_LOGI(TAG, "volume = %d", codec->output_volume());
     }
 }
-}  // namespace
 
 void StartSpeakerSelfTestTask(AudioService* audio_service) {
     xTaskCreate(SpeakerSelfTestTask, "speaker_test", 4096, audio_service, 4, nullptr);

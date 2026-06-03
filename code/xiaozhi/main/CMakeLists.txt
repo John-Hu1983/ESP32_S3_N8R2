@@ -38,6 +38,7 @@ set(SOURCES "audio/audio_codec.cc"
             "assets.cc"
             "customize/test_myself/test_self_mic.cc"
             "customize/test_myself/test_self_speaker.cc"
+            "customize/sys_supervision/system_survey.cc"
             "main.cc"
             )
 
@@ -809,7 +810,7 @@ elseif(CONFIG_BOARD_TYPE_AIPI_LITE)
     set(BUILTIN_ICON_FONT font_awesome_14_1)
     set(DEFAULT_EMOJI_COLLECTION twemoji_32)
 elseif(CONFIG_BOARD_TYPE_A1_JOHN_ESP32S3_NV3041)
-    set(BOARD_TYPE "a1-John-esp32s3-nv3041")
+    set(BOARD_TYPE "John_AI_box")
     set(BUILTIN_TEXT_FONT font_puhui_basic_20_4)
     set(BUILTIN_ICON_FONT font_awesome_20_4)
     set(DEFAULT_EMOJI_COLLECTION twemoji_64)

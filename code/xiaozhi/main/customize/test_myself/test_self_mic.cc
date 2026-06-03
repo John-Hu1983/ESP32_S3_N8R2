@@ -4,7 +4,6 @@
 #include "application.h"
 #include "audio_codec.h"
 #include "board.h"
-#include "boards/a1-John-esp32s3-nv3041/a1_john_no_audio_codec_duplex.h"
 #include "display.h"
 
 #include <esp_heap_caps.h>
@@ -17,23 +16,22 @@
 
 #define TAG "MicSelfTest"
 
-namespace {
-void MicSelfTestTask(void* arg) {
+static void MicSelfTestTask(void* arg) {
     (void)arg;
-    auto& audio_service = Application::GetInstance().GetAudioService();
+    AudioService* audio_service = &Application::GetInstance().GetAudioService();
 #if HAVE_LVGL
     Display* display = Board::GetInstance().GetDisplay();
-    while (!audio_service.IsInitialized() || (display != nullptr && !display->IsSetupUICalled())) {
+    while (!audio_service->IsInitialized() || (display != nullptr && !display->IsSetupUICalled())) {
         vTaskDelay(pdMS_TO_TICKS(50));
         display = Board::GetInstance().GetDisplay();
     }
 #else
-    while (!audio_service.IsInitialized()) {
+    while (!audio_service->IsInitialized()) {
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 #endif
 
-    auto* codec = static_cast<A1JohnNoAudioCodecDuplex*>(Board::GetInstance().GetAudioCodec());
+    AudioCodec* codec = Board::GetInstance().GetAudioCodec();
     if (codec == nullptr) {
         return;
     }
@@ -41,25 +39,26 @@ void MicSelfTestTask(void* arg) {
     esp_log_level_set(TAG, ESP_LOG_INFO);
     ESP_LOGI(TAG, "Mic raw logging task start");
 
-    auto* base_codec = static_cast<AudioCodec*>(codec);
-    int sample_rate = base_codec->input_sample_rate();
-    int samples_per_read = 256;
-    const int kWaveUpdateDelayMs = 20;
+    int sample_rate = codec->input_sample_rate();
+    const int samples_per_read = 256;
+    const int kWaveUpdateDelayMs = 50;
+    const int kLogEveryN = 10;
     std::vector<int16_t> samples;
 
 #if HAVE_LVGL
     lv_obj_t* canvas = nullptr;
     lv_obj_t* label = nullptr;
     lv_color_t* canvas_buf = nullptr;
-    const int point_count = 320;
-    std::vector<lv_point_t> points(point_count);
-    std::vector<int16_t> wave_buffer(point_count, 0);
+    static const int kPointCount = 160;
+    static lv_point_t points[kPointCount];
+    static int16_t wave_buffer[kPointCount];
     int write_index = 0;
     int32_t scale_peak = 1;
     int plot_width = 0;
     int plot_height = 0;
     int plot_x = 0;
     int plot_y = 0;
+    int log_counter = 0;
 
     if (display != nullptr) {
         DisplayLockGuard lock(display);
@@ -69,6 +68,12 @@ void MicSelfTestTask(void* arg) {
         plot_x = 0;
         plot_y = (display->height() - plot_height) / 2;
 
+        for (int i = 0; i < kPointCount; ++i) {
+            points[i].x = 0;
+            points[i].y = 0;
+            wave_buffer[i] = 0;
+        }
+
         canvas = lv_canvas_create(screen);
         lv_obj_set_pos(canvas, plot_x, plot_y);
         lv_obj_set_size(canvas, plot_width, plot_height);
@@ -76,7 +81,11 @@ void MicSelfTestTask(void* arg) {
 
         size_t buf_size = LV_CANVAS_BUF_SIZE(plot_width, plot_height, 16, LV_DRAW_BUF_STRIDE_ALIGN);
         canvas_buf = static_cast<lv_color_t*>(
-            heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+            heap_caps_malloc(buf_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+        if (canvas_buf == nullptr) {
+            canvas_buf = static_cast<lv_color_t*>(
+                heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        }
         if (canvas_buf == nullptr) {
             canvas_buf = static_cast<lv_color_t*>(heap_caps_malloc(buf_size, MALLOC_CAP_8BIT));
         }
@@ -96,17 +105,19 @@ void MicSelfTestTask(void* arg) {
 #endif
 
     while (true) {
-        if (audio_service.ReadAudioData(samples, sample_rate, samples_per_read)) {
+        if (audio_service->ReadAudioData(samples, sample_rate, samples_per_read)) {
             if (samples.empty()) {
                 vTaskDelay(pdMS_TO_TICKS(kWaveUpdateDelayMs));
                 continue;
             }
-            int16_t min_value = samples[0];
-            int16_t max_value = samples[0];
+            const int16_t* sample_data = samples.data();
+            size_t sample_count = samples.size();
+            int16_t min_value = sample_data[0];
+            int16_t max_value = sample_data[0];
             int64_t sum_abs = 0;
             int32_t max_abs = 1;
-            for (size_t i = 0; i < samples.size(); ++i) {
-                int16_t value = samples[i];
+            for (size_t i = 0; i < sample_count; ++i) {
+                int16_t value = sample_data[i];
                 if (value < min_value) {
                     min_value = value;
                 }
@@ -122,22 +133,24 @@ void MicSelfTestTask(void* arg) {
                     max_abs = abs_value;
                 }
             }
-            int avg_abs = static_cast<int>(sum_abs / samples.size());
+            int avg_abs = static_cast<int>(sum_abs / sample_count);
 
             char sample_text[192] = {0};
             int offset = 0;
-            int log_count = samples.size() < 16 ? static_cast<int>(samples.size()) : 16;
+            int log_count = sample_count < 16 ? static_cast<int>(sample_count) : 16;
             for (int i = 0; i < log_count; ++i) {
                 int written = snprintf(sample_text + offset, sizeof(sample_text) - offset,
-                                       i == 0 ? "%d" : " %d", samples[static_cast<size_t>(i)]);
+                                       i == 0 ? "%d" : " %d", sample_data[static_cast<size_t>(i)]);
                 if (written < 0 || written >= static_cast<int>(sizeof(sample_text) - offset)) {
                     break;
                 }
                 offset += written;
             }
 
-            ESP_LOGI(TAG, "MIC: min=%d max=%d avg_abs=%d samples=%s", min_value, max_value, avg_abs,
-                     sample_text);
+            if ((log_counter++ % kLogEveryN) == 0) {
+                ESP_LOGI(TAG, "MIC: min=%d max=%d avg_abs=%d samples=%s", min_value, max_value,
+                         avg_abs, sample_text);
+            }
 
 #if HAVE_LVGL
             if (display != nullptr && canvas != nullptr && plot_width > 0 && plot_height > 0) {
@@ -151,16 +164,16 @@ void MicSelfTestTask(void* arg) {
                 }
 
                 wave_buffer[write_index] = static_cast<int16_t>(avg_abs);
-                write_index = (write_index + 1) % point_count;
+                write_index = (write_index + 1) % kPointCount;
 
                 float scale =
                     static_cast<float>(plot_height / 2 - 1) / static_cast<float>(scale_peak);
-                for (int i = 0; i < point_count; ++i) {
+                for (int i = 0; i < kPointCount; ++i) {
                     int index = write_index + i;
-                    if (index >= point_count) {
-                        index -= point_count;
+                    if (index >= kPointCount) {
+                        index -= kPointCount;
                     }
-                    int x = (point_count <= 1) ? 0 : (i * (plot_width - 1)) / (point_count - 1);
+                    int x = (kPointCount <= 1) ? 0 : (i * (plot_width - 1)) / (kPointCount - 1);
                     int y = plot_height / 2 -
                             static_cast<int>(wave_buffer[static_cast<size_t>(index)] * scale);
                     if (y < 0) {
@@ -182,7 +195,7 @@ void MicSelfTestTask(void* arg) {
                 line_dsc.width = 2;
                 line_dsc.color = lv_color_hex(0x00FF00);
 
-                for (int i = 1; i < point_count; ++i) {
+                for (int i = 1; i < kPointCount; ++i) {
                     line_dsc.p1.x = points[static_cast<size_t>(i - 1)].x;
                     line_dsc.p1.y = points[static_cast<size_t>(i - 1)].y;
                     line_dsc.p2.x = points[static_cast<size_t>(i)].x;
@@ -201,7 +214,6 @@ void MicSelfTestTask(void* arg) {
         vTaskDelay(pdMS_TO_TICKS(kWaveUpdateDelayMs));
     }
 }
-}  // namespace
 
 void StartMicSelfTestTask() {
     xTaskCreate(MicSelfTestTask, "mic_self_test", 4096, nullptr, 3, nullptr);

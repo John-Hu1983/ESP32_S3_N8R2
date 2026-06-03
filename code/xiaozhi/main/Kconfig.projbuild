@@ -558,7 +558,7 @@ choice BOARD_TYPE
         bool "AIPI-Lite"
         depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_A1_JOHN_ESP32S3_NV3041
-        bool "A1-John ESP32S3 NV3041"
+        bool "John_AI_box"
         depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_HU_087
         bool "HU-087"

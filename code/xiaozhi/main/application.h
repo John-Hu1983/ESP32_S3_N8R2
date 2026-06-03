@@ -12,6 +12,8 @@
 #include <memory>
 #include <functional>
 
+struct cJSON;
+
 #include "protocol.h"
 #include "ota.h"
 #include "audio_service.h"
@@ -115,6 +117,7 @@ public:
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
     void SetWakeWordDisabled(bool disabled);
+    void SetIncomingJsonObserver(std::function<void(const cJSON* root)> observer);
     
     /**
      * Reset protocol resources (thread-safe)
@@ -140,6 +143,7 @@ private:
     std::unique_ptr<Ota> ota_;
 
     std::function<void(const std::string&)> mcp_broadcast_callback_;
+    std::function<void(const cJSON* root)> incoming_json_observer_;
 
     bool has_server_time_ = false;
     bool aborted_ = false;

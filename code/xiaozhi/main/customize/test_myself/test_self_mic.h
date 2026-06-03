@@ -1,6 +1,6 @@
 #pragma once
 
-#define TEST_MIC 1
+#define TEST_MIC 0
 
 #if TEST_MIC
 void StartMicSelfTestTask();

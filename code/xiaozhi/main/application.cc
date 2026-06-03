@@ -73,6 +73,7 @@ void Application::Initialize() {
     audio_service_.Initialize(codec);
     audio_service_.Start();
 
+
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_SEND_AUDIO);
@@ -524,6 +525,9 @@ void Application::InitializeProtocol() {
     });
 
     protocol_->OnIncomingJson([this, display](const cJSON* root) {
+        if (incoming_json_observer_) {
+            incoming_json_observer_(root);
+        }
         // Parse JSON data
         auto type = cJSON_GetObjectItem(root, "type");
         if (strcmp(type->valuestring, "tts") == 0) {
@@ -651,6 +655,10 @@ void Application::SetWakeWordDisabled(bool disabled) {
     if (disabled) {
         SetWakeWordDetection(false);
     }
+}
+
+void Application::SetIncomingJsonObserver(std::function<void(const cJSON* root)> observer) {
+    incoming_json_observer_ = std::move(observer);
 }
 
 void Application::Alert(const char* status, const char* message, const char* emotion,
