@@ -44,7 +44,6 @@ constexpr char kBoardTag[] = "JohnAI";
 class JohnAIBoard : public WifiBoard {
 private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
-    Sc7a20htr* accelerometer_ = nullptr;
     Button boot_button_;
     LcdDisplay* display_ = nullptr;
 
@@ -84,10 +83,6 @@ private:
                 },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
-
-        accelerometer_ = new Sc7a20htr(i2c_bus_);
-        bool ok = accelerometer_->SelfTest();
-        ESP_LOGI(kBoardTag, "SC7A20HTR self test: %s", ok ? "OK" : "FAIL");
     }
 
     void InitializeSpi() {
