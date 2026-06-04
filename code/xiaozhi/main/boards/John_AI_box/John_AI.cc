@@ -3,6 +3,7 @@
 #include "config.h"
 #include "customize/peripheral/audio/ht517_inmp441.h"
 #include "customize/peripheral/g_sensor/sc7a20htr.h"
+#include "customize/peripheral/monitor/user_lcd_display.h"
 #include "customize/sys_supervision/system_survey.h"
 #include "customize/test_myself/test_self_mic.h"
 #include "customize/test_myself/test_self_speaker.h"
@@ -24,22 +25,7 @@
 #include <cmath>
 #include <limits>
 
-#if defined(__has_include)
-#if __has_include("esp_lcd_panel_nv3041.h")
-#include "esp_lcd_panel_nv3041.h"
-#define HAVE_NV3041_PANEL 1
-#else
-#include "esp_lcd_panel_st7789.h"
-#define HAVE_NV3041_PANEL 0
-#endif
-#else
-#include "esp_lcd_panel_st7789.h"
-#define HAVE_NV3041_PANEL 0
-#endif
-
-namespace {
-constexpr char kBoardTag[] = "JohnAI";
-}  // namespace
+#define TAG "JohnAI"
 
 class JohnAIBoard : public WifiBoard {
 private:
@@ -100,7 +86,7 @@ private:
         esp_lcd_panel_io_handle_t panel_io = nullptr;
         esp_lcd_panel_handle_t panel = nullptr;
 
-        ESP_LOGD(kBoardTag, "Install panel IO");
+        ESP_LOGD(TAG, "Install panel IO");
         esp_lcd_panel_io_spi_config_t io_config = {};
         io_config.cs_gpio_num = DISPLAY_CS_PIN;
         io_config.dc_gpio_num = DISPLAY_DC_PIN;
@@ -111,7 +97,7 @@ private:
         io_config.lcd_param_bits = 8;
         ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &io_config, &panel_io));
 
-        ESP_LOGD(kBoardTag, "Install LCD driver");
+        ESP_LOGD(TAG, "Install LCD driver");
         esp_lcd_panel_dev_config_t panel_config = {};
         panel_config.reset_gpio_num = DISPLAY_RST_PIN;
         panel_config.rgb_ele_order = DISPLAY_RGB_ORDER;
@@ -121,7 +107,7 @@ private:
 #if HAVE_NV3041_PANEL
         ESP_ERROR_CHECK(esp_lcd_new_panel_nv3041(panel_io, &panel_config, &panel));
 #else
-        ESP_LOGW(kBoardTag, "NV3041 panel driver not found; falling back to ST7789");
+        ESP_LOGW(TAG, "NV3041 panel driver not found; falling back to ST7789");
         ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
 #endif
 
@@ -132,9 +118,15 @@ private:
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
         esp_lcd_panel_disp_on_off(panel, true);
 
+#if JOHN_AI_USE_USER_UI
+        display_ = new UserLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                      DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
+                                      DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+#else
         display_ = new SpiLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
                                      DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
                                      DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+#endif
     }
 
     void InitializeButtons() {
@@ -151,8 +143,8 @@ private:
     void DefaultVolume() {
         Settings settings("audio", true);
         int volume = settings.GetInt("output_volume", 10);
-        if (volume < 20) {
-            settings.SetInt("output_volume", 20);
+        if (volume < 50) {
+            settings.SetInt("output_volume", 50);
         }
     }
 
@@ -165,18 +157,7 @@ public:
         InitializeButtons();
         DefaultVolume();
 
-#if SYSTEM_SUPERVISION_ENABLED
-        StartSystemSurveyTask();
-#endif
 
-#if TEST_MIC
-        Application::GetInstance().SetWakeWordDisabled(true);
-        StartMicSelfTestTask();
-#endif
-
-#if TEST_SPEAKER
-        StartSpeakerSelfTestTask(&Application::GetInstance().GetAudioService());
-#endif
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();
         }

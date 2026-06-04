@@ -6,36 +6,46 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-namespace {
-constexpr char kUserMainTag[] = "UserMain";
+#define TAG "UserMain"
 
-void UserMainTask(void* arg) {
-    (void)arg;
-    ESP_LOGI(kUserMainTag, "User main task started");
+static i2c_master_bus_handle_t g_i2c_bus = nullptr;
+static Sc7a20htr* g_sensor = nullptr;
 
-    i2c_master_bus_handle_t i2c_bus = nullptr;
-    esp_err_t ret = i2c_master_get_bus_handle(I2C_NUM_0, &i2c_bus);
-    if (ret != ESP_OK || i2c_bus == nullptr) {
-        ESP_LOGE(kUserMainTag, "Failed to get I2C bus handle: %s", esp_err_to_name(ret));
-        vTaskDelete(nullptr);
-        return;
+static int accelerate_init_device(void) {
+    esp_err_t ret = i2c_master_get_bus_handle(I2C_NUM_0, &g_i2c_bus);
+    if (ret != ESP_OK || g_i2c_bus == nullptr) {
+        ESP_LOGE(TAG, "Failed to get I2C bus handle: %s", esp_err_to_name(ret));
+        return -1;
     }
 
-    Sc7a20htr sensor(i2c_bus);
-    ret = sensor.Init(SC7A20_ODR_100HZ, SC7A20_RANGE_2G);
+    g_sensor = new Sc7a20htr(g_i2c_bus);
+    ret = g_sensor->Init(SC7A20_ODR_100HZ, SC7A20_RANGE_2G);
     if (ret != ESP_OK) {
-        ESP_LOGE(kUserMainTag, "SC7A20 init failed: %s", esp_err_to_name(ret));
-        vTaskDelete(nullptr);
-        return;
+        ESP_LOGE(TAG, "SC7A20 init failed: %s", esp_err_to_name(ret));
+        delete g_sensor;
+        g_sensor = nullptr;
+        return -1;
     }
 
+    return 0;
+}
+
+static void UserMainTask(void* arg) {
+    (void)arg;
+    esp_err_t ret;
     SC7A20_AccData_t acc = {};
     SC7A20_Angle_t ang = {};
+    ESP_LOGI(TAG, "User main task started");
+
+    if (accelerate_init_device() < 0) {
+        vTaskDelete(nullptr);
+        return;
+    }
 
     for (;;) {
         bool read_ok = false;
         for (int attempt = 0; attempt < 3; ++attempt) {
-            ret = sensor.ReadAcc(&acc);
+            ret = g_sensor->ReadAcc(&acc);
             if (ret == ESP_OK) {
                 read_ok = true;
                 break;
@@ -44,17 +54,16 @@ void UserMainTask(void* arg) {
         }
 
         if (read_ok) {
-            sensor.CalcAngle(acc, &ang);
-            ESP_LOGI(kUserMainTag,
+            g_sensor->CalcAngle(acc, &ang);
+            ESP_LOGI(TAG,
                      "Acc(m/s2): x=%.3f y=%.3f z=%.3f | Angle(deg): pitch=%.2f roll=%.2f yaw=%.2f",
                      acc.ax, acc.ay, acc.az, ang.pitch, ang.roll, ang.yaw);
         } else {
-            ESP_LOGW(kUserMainTag, "SC7A20 read failed: %s", esp_err_to_name(ret));
+            ESP_LOGW(TAG, "SC7A20 read failed: %s", esp_err_to_name(ret));
         }
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
-}  // namespace
 
 void StartUserMainTask() { xTaskCreate(UserMainTask, "user_main", 4096, nullptr, 5, nullptr); }

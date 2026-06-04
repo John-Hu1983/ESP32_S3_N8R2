@@ -6,9 +6,7 @@
 
 #include <limits>
 
-namespace {
-constexpr char kAudioTag[] = "HT517_INMP441";
-}  // namespace
+#define TAG "HT517_INMP441"
 
 Ht517Inmp441AudioCodec::Ht517Inmp441AudioCodec(int input_sample_rate, int output_sample_rate, gpio_num_t bclk,
                                                gpio_num_t ws, gpio_num_t dout, gpio_num_t din) {
@@ -65,7 +63,7 @@ Ht517Inmp441AudioCodec::Ht517Inmp441AudioCodec(int input_sample_rate, int output
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle_, &tx_cfg));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &rx_cfg));
     SetInputGain(3.0f);
-    ESP_LOGI(kAudioTag, "Stereo I2S configured (HT517)");
+    ESP_LOGI(TAG, "Stereo I2S configured (HT517)");
 }
 
 void Ht517Inmp441AudioCodec::OutputData(std::vector<int16_t>& data) {

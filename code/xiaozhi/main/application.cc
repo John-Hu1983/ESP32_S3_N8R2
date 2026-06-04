@@ -74,7 +74,6 @@ void Application::Initialize() {
     audio_service_.Initialize(codec);
     audio_service_.Start();
 
-
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_SEND_AUDIO);
@@ -167,6 +166,18 @@ void Application::Initialize() {
     display->UpdateStatusBar(true);
 
     StartUserMainTask();
+#if SYSTEM_SUPERVISION_ENABLED
+    StartSystemSurveyTask();
+#endif
+
+#if TEST_MIC
+    Application::GetInstance().SetWakeWordDisabled(true);
+    StartMicSelfTestTask();
+#endif
+
+#if TEST_SPEAKER
+    StartSpeakerSelfTestTask(&Application::GetInstance().GetAudioService());
+#endif
 }
 
 void Application::Run() {

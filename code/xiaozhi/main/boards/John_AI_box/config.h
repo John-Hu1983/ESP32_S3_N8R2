@@ -3,6 +3,23 @@
 
 #include <driver/gpio.h>
 
+#if defined(__has_include)
+#if __has_include("esp_lcd_panel_nv3041.h")
+#include "esp_lcd_panel_nv3041.h"
+#define HAVE_NV3041_PANEL 1
+#else
+#include "esp_lcd_panel_st7789.h"
+#define HAVE_NV3041_PANEL 0
+#endif
+#else
+#include "esp_lcd_panel_st7789.h"
+#define HAVE_NV3041_PANEL 0
+#endif
+
+#ifndef JOHN_AI_USE_USER_UI
+#define JOHN_AI_USE_USER_UI 1
+#endif
+
 #define AUDIO_INPUT_SAMPLE_RATE 16000
 #define AUDIO_OUTPUT_SAMPLE_RATE 16000
 
