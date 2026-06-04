@@ -140,7 +140,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
         .io_handle = panel_io_,
         .panel_handle = panel_,
         .control_handle = nullptr,
-        .buffer_size = static_cast<uint32_t>(width_ * 40),
+        .buffer_size = static_cast<uint32_t>(width_ * 120),
         .double_buffer = true,
         .trans_size = 0,
         .hres = static_cast<uint32_t>(width_),
@@ -156,7 +156,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
         .flags =
             {
                 .buff_dma = 1,
-                .buff_spiram = 0,
+                .buff_spiram = 1,
                 .sw_rotate = 0,
                 .swap_bytes = 1,
                 .full_refresh = 0,
