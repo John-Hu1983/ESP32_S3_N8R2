@@ -4,6 +4,7 @@
 #include "customize/peripheral/audio/ht517_inmp441.h"
 #include "customize/peripheral/g_sensor/sc7a20htr.h"
 #include "customize/peripheral/monitor/user_lcd_display.h"
+#include "customize/peripheral/touch/tsc2046_touch.h"
 #include "customize/sys_supervision/system_survey.h"
 #include "customize/test_myself/test_self_mic.h"
 #include "customize/test_myself/test_self_speaker.h"
@@ -21,6 +22,7 @@
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <lvgl.h>
 
 #include <cmath>
 #include <limits>
@@ -32,6 +34,8 @@ private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     Button boot_button_;
     LcdDisplay* display_ = nullptr;
+    Tsc2046Touch touch_;
+    lv_indev_t* touch_indev_ = nullptr;
 
     void InitializePeripheralsReset() {
         gpio_num_t reset_pin = PERIPHERAL_RESET_GPIO;
@@ -129,6 +133,19 @@ private:
 #endif
     }
 
+    void InitializeTouch() {
+        if (!touch_.Init(SPI3_HOST, TOUCH_CLK_PIN, TOUCH_MOSI_PIN, TOUCH_MISO_PIN, TOUCH_CS_PIN,
+                         TOUCH_IRQ_PIN, DISPLAY_WIDTH, DISPLAY_HEIGHT)) {
+            ESP_LOGW(TAG, "TSC2046 touch init failed");
+            return;
+        }
+
+        touch_indev_ = lv_indev_create();
+        lv_indev_set_type(touch_indev_, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_read_cb(touch_indev_, TouchInputReadCallback);
+        lv_indev_set_user_data(touch_indev_, &touch_);
+    }
+
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
@@ -138,6 +155,25 @@ private:
             }
             app.ToggleChatState();
         });
+    }
+
+    static void TouchInputReadCallback(lv_indev_t* indev, lv_indev_data_t* data) {
+        auto* touch = static_cast<Tsc2046Touch*>(lv_indev_get_user_data(indev));
+        bool pressed = false;
+        uint16_t x = 0;
+        uint16_t y = 0;
+
+        if (touch != nullptr && touch->Read(&x, &y, &pressed)) {
+            data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+            if (pressed) {
+                data->point.x = static_cast<lv_coord_t>(x);
+                data->point.y = static_cast<lv_coord_t>(y);
+                ESP_LOGW(TAG, "Touch x=%u y=%u raw_x=%u raw_y=%u", x, y,
+                         touch->last_raw_x(), touch->last_raw_y());
+            }
+        } else {
+            data->state = LV_INDEV_STATE_RELEASED;
+        }
     }
 
     void DefaultVolume() {
@@ -154,6 +190,7 @@ public:
         InitializeI2c();
         InitializeSpi();
         InitializeLcdDisplay();
+        InitializeTouch();
         InitializeButtons();
         DefaultVolume();
 

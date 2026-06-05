@@ -14,6 +14,30 @@ LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 
 #if JOHN_AI_USE_USER_UI
+namespace {
+const lv_color_t kAppIconColor = lv_color_hex(0x0F172A);
+const lv_color_t kAppIconColorActive = lv_color_hex(0xF8FAFC);
+const lv_color_t kAppCardBg = lv_color_hex(0xF8FAFC);
+const lv_color_t kAppCardBgActive = lv_color_hex(0x0F172A);
+
+void AppCardEventCallback(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_PRESSED && code != LV_EVENT_RELEASED && code != LV_EVENT_PRESS_LOST) {
+        return;
+    }
+
+    lv_obj_t* card = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    lv_obj_t* icon = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
+    if (card == nullptr || icon == nullptr) {
+        return;
+    }
+
+    bool active = (code == LV_EVENT_PRESSED);
+    lv_obj_set_style_text_color(icon, active ? kAppIconColorActive : kAppIconColor, 0);
+    lv_obj_set_style_bg_color(card, active ? kAppCardBgActive : kAppCardBg, 0);
+}
+}  // namespace
+
 UserLcdDisplay::~UserLcdDisplay() {
     if (top_timer_ != nullptr) {
         lv_timer_del(top_timer_);
@@ -140,18 +164,23 @@ void UserLcdDisplay::SetupUI() {
         lv_obj_set_style_radius(card, 8, 0);
         lv_obj_set_style_border_width(card, 1, 0);
         lv_obj_set_style_border_color(card, lv_color_hex(0xE2E8F0), 0);
-        lv_obj_set_style_bg_color(card, lv_color_hex(0xF8FAFC), 0);
+        lv_obj_set_style_bg_color(card, kAppCardBg, 0);
         lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
         lv_obj_set_style_pad_all(card, 6, 0);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER);
 
         lv_obj_t* icon = lv_label_create(card);
         lv_label_set_text(icon, kApps[i].icon);
-        lv_obj_set_style_text_color(icon, lv_color_hex(0x0F172A), 0);
+        lv_obj_set_style_text_color(icon, kAppIconColor, 0);
         lv_obj_set_style_text_font(icon, &BUILTIN_ICON_FONT, 0);
+
+        lv_obj_add_event_cb(card, AppCardEventCallback, LV_EVENT_PRESSED, icon);
+        lv_obj_add_event_cb(card, AppCardEventCallback, LV_EVENT_RELEASED, icon);
+        lv_obj_add_event_cb(card, AppCardEventCallback, LV_EVENT_PRESS_LOST, icon);
 
         lv_obj_t* label = lv_label_create(card);
         lv_label_set_text(label, kApps[i].name);

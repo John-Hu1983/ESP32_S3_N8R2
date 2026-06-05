@@ -1,6 +1,5 @@
 #include "customize/application/user_main.h"
 #include "customize/peripheral/g_sensor/sc7a20htr.h"
-
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_psram.h>
@@ -9,13 +8,13 @@
 
 #define TAG "UserMain"
 #define USER_MAIN_DISABLE_ACCEL 0
+#define USER_SHOW_PSRAM_STATS 0
 
 static void UserMainTask(void* arg) {
     (void)arg;
     ESP_LOGI(TAG, "User main task started");
 
-#if USER_MAIN_DISABLE_ACCEL
-    ESP_LOGW(TAG, "Accelerometer disabled (temporary)");
+#if USER_SHOW_PSRAM_STATS
     while (true) {
         ESP_LOGI(TAG, "PSRAM total: %d bytes", esp_psram_get_size());
         ESP_LOGI(TAG, "PSRAM free : %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -25,13 +24,17 @@ static void UserMainTask(void* arg) {
     }
 #endif
 
+#if USER_MAIN_DISABLE_ACCEL
     if (sc7a20htr_init_device() < 0) {
         vTaskDelete(nullptr);
         return;
     }
+#endif
 
     for (;;) {
+#if USER_MAIN_DISABLE_ACCEL
         sc7a20htr_read_elementary();
+#endif
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }

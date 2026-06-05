@@ -20,6 +20,10 @@
 #define JOHN_AI_USE_USER_UI 1
 #endif
 
+#ifndef JOHN_AI_TOUCH_DEBUG
+#define JOHN_AI_TOUCH_DEBUG 0
+#endif
+
 #define AUDIO_INPUT_SAMPLE_RATE 16000
 #define AUDIO_OUTPUT_SAMPLE_RATE 16000
 
@@ -70,5 +74,15 @@
 #define TOUCH_MISO_PIN GPIO_NUM_1
 #define TOUCH_MOSI_PIN GPIO_NUM_2
 #define TOUCH_IRQ_PIN GPIO_NUM_35
+
+// TSC2046 calibration and orientation
+#define TSC2046_X_MIN 302
+#define TSC2046_X_MAX 1727
+#define TSC2046_Y_MIN 312
+#define TSC2046_Y_MAX 1655
+#define TSC2046_SWAP_XY 0
+#define TSC2046_MIRROR_X 1
+#define TSC2046_MIRROR_Y 1
+#define TSC2046_SPI_CLOCK_HZ (2 * 1000 * 1000)
 
 #endif  // _BOARD_CONFIG_H_

@@ -13,6 +13,7 @@ set(SOURCES "audio/audio_codec.cc"
             "customize/peripheral/g_sensor/sc7a20htr.cc"
             "customize/peripheral/audio/ht517_inmp441.cc"
             "customize/peripheral/monitor/user_lcd_display.cc"
+            "customize/peripheral/touch/tsc2046_touch.cc"
             "customize/application/user_main.cc"
             "led/single_led.cc"
             "led/circular_strip.cc"
@@ -46,7 +47,7 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "customize/peripheral/g_sensor" "customize/peripheral/audio" "customize/application")
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "customize/peripheral/g_sensor" "customize/peripheral/audio" "customize/peripheral/touch" "customize/application")
 
 # Add board common files
 list(APPEND SOURCES
@@ -846,6 +847,12 @@ else()
     )
 endif()
 list(APPEND SOURCES ${BOARD_SOURCES})
+
+if(MANUFACTURER)
+    list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/${MANUFACTURER}/${BOARD_TYPE})
+else()
+    list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE})
+endif()
 
 # Select audio processor according to Kconfig
 if(CONFIG_USE_AUDIO_PROCESSOR)
