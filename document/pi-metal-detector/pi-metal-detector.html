@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Pulse Induction Metal Detector</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 18mm 16mm;
+    }
+
+    :root {
+      --ink: #1d252c;
+      --muted: #53616d;
+      --rule: #d7dde2;
+      --accent: #b3382d;
+      --accent-soft: #f5e7e5;
+      --panel: #f7f9fa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 11.5pt;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .cover {
+      min-height: 230mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      page-break-after: always;
+      border-top: 8px solid var(--accent);
+      padding-top: 18mm;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--accent);
+      font-size: 10pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      max-width: 760px;
+      font-size: 33pt;
+      line-height: 1.08;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 28px;
+      max-width: 700px;
+      color: var(--muted);
+      font-size: 14pt;
+      line-height: 1.45;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      max-width: 680px;
+      margin: 20px 0 30px;
+      padding: 18px 0;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 10.5pt;
+    }
+
+    .hero-image {
+      width: 100%;
+      max-height: 120mm;
+      object-fit: contain;
+      border: 1px solid var(--rule);
+      background: var(--panel);
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    section {
+      margin: 0 0 20px;
+      break-inside: avoid-page;
+    }
+
+    h2 {
+      margin: 22px 0 9px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid var(--accent);
+      color: var(--ink);
+      font-size: 18pt;
+      line-height: 1.2;
+      font-weight: 720;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      color: var(--ink);
+      font-size: 13.5pt;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0 0 10px;
+    }
+
+    ul {
+      margin: 8px 0 12px 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 6px;
+    }
+
+    figure {
+      margin: 16px 0 18px;
+      break-inside: avoid;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      max-height: 132mm;
+      object-fit: contain;
+      border: 1px solid var(--rule);
+      background: var(--panel);
+    }
+
+    figcaption {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 9.5pt;
+      line-height: 1.35;
+    }
+
+    .callout {
+      margin: 14px 0 16px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      break-inside: avoid;
+    }
+
+    .callout p:last-child {
+      margin-bottom: 0;
+    }
+
+    .components {
+      padding: 12px 16px;
+      border: 1px solid var(--rule);
+      background: var(--panel);
+      break-inside: avoid;
+    }
+
+    .components h3 {
+      margin-top: 0;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 10pt;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    footer {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 9.5pt;
+    }
+
+    @media screen {
+      body {
+        background: #eef2f4;
+      }
+
+      .sheet {
+        max-width: 920px;
+        margin: 24px auto;
+        padding: 24px 46px 44px;
+        background: #ffffff;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+      }
+    }
+
+    @media print {
+      .sheet {
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="cover">
+      <p class="eyebrow">Project Document</p>
+      <h1>ESP32 Pulse Induction Metal Detector</h1>
+      <p class="subtitle">A Bluetooth-enabled PI metal detector project using an ESP32 microcontroller, a search coil, and an Android smartphone for signal processing and audiovisual feedback.</p>
+      <div class="meta">
+        <div><strong>Detector type:</strong> Pulse Induction (PI)</div>
+        <div><strong>Controller:</strong> ESP32</div>
+        <div><strong>Interface:</strong> Bluetooth Android application</div>
+        <div><strong>Power:</strong> Three lithium cells in series, about 12 V</div>
+      </div>
+      <img class="hero-image" src="assets/02-detector-overview.jpg" alt="Completed ESP32 pulse induction metal detector project">
+    </header>
+
+    <main>
+      <section>
+        <h2>Overview</h2>
+        <p>A Pulse Induction (PI) metal detector works by sending short pulses of electrical current through a coil to create a magnetic field. Each pulse lasts for a very short period, usually only microseconds. When the pulse is transmitted, the magnetic field spreads outward from the coil.</p>
+        <p>If a metal object is near the coil, it disrupts the magnetic field. The coil detects the change caused by the metal object, producing a reflected pulse that differs from the normal pulse.</p>
+        <figure>
+          <img src="assets/01-pi-principle.png" alt="Pulse induction metal detector principle illustration">
+          <figcaption>Figure 1. Pulse induction detection principle.</figcaption>
+        </figure>
+        <p>This difference is processed and emitted as a sound or short beeps, with a frequency that changes depending on the distance and dimensions of the detected metal object.</p>
+      </section>
+
+      <section>
+        <h2>Project Background</h2>
+        <p>Previous versions of this detector used an Arduino Nano microcontroller. This version uses a more powerful ESP32 board, which also includes built-in Bluetooth. That makes the construction simpler because the microcontroller can exchange data directly with a smartphone.</p>
+        <p>The original project was created by <a href="https://neco-desarrollo.es/pirat-wireless-metal-detector">Neco Desarrollo</a>. The project idea combines a microcontroller and a smartphone: the microcontroller receives and transmits signals from the external detection circuit, while the smartphone provides higher-level processing and audiovisual presentation.</p>
+        <div class="callout">
+          <p>This cooperation between simple external electronics, an ESP32, and a smartphone is the central idea of the project.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Sponsor Note</h2>
+        <p>This project description also mentions <a href="https://www.pcbway.com/blog/blog/News/PCBWay_11th_Badge_Design_Contest_7ac30a70.html">PCBWay</a>, which organized its 11th badge design contest from March 3rd to April 31st. The contest invited badge designs and offered prizes in cash and coupons.</p>
+        <figure>
+          <img src="assets/03-pcbway-contest.jpg" alt="PCBWay badge design contest image">
+          <figcaption>Figure 2. PCBWay 11th badge design contest mention.</figcaption>
+        </figure>
+      </section>
+
+      <section class="page-break">
+        <h2>Input Circuit</h2>
+        <p>The input circuit is almost identical to those used in many PI metal detectors. It includes a search coil, an operational amplifier, a MOSFET switching stage, and supporting passive components.</p>
+        <div class="components">
+          <h3>Main Components</h3>
+          <ul>
+            <li>A search coil made from 20 turns of insulated copper wire with a cross section of 0.4 mm², formed as a circle with a diameter of 20 cm.</li>
+            <li>An operational amplifier IC. The TL081 was used here, although OP07, LM741, and CA3130 ICs worked almost identically.</li>
+            <li>A power MOSFET with one or two driver transistors. In this build, IRF740, BC547, and BC557 parts were used, although approximate replacements can be used.</li>
+            <li>A 7805 voltage stabilizer to power the microcontroller.</li>
+            <li>Several resistors, capacitors, and diodes.</li>
+          </ul>
+        </div>
+        <figure>
+          <img src="assets/04-input-circuit.jpg" alt="Metal detector input circuit and electronics">
+          <figcaption>Figure 3. Input circuit and electronic assembly.</figcaption>
+        </figure>
+        <p>The detector is powered by three lithium batteries connected in series, providing approximately 12 V. The maximum total current consumption is about 150 mA.</p>
+      </section>
+
+      <section>
+        <h2>Android Application Setup</h2>
+        <p>During initial testing, the Android application did not fully activate. Bluetooth connected normally, but when the refresh button was pressed, the application disappeared from the screen or showed an error depending on the Android OS version.</p>
+        <p>Because the application was not modified, the solution was to adjust the Arduino-side code. The initial duty cycle value was changed from 16 to 13.</p>
+        <figure>
+          <img src="assets/05-duty-cycle-code.png" alt="Code snippet showing duty cycle value changed to 13">
+          <figcaption>Figure 4. Duty cycle value adjustment in the microcontroller code.</figcaption>
+        </figure>
+        <p>After this change, the Android application worked normally and testing could begin.</p>
+        <h3>Application Workflow</h3>
+        <p>After opening the application, go to setup and select the metal detector version named <strong>Spirit PI</strong>. Then open Bluetooth settings, select <strong>ESP32-Spirit PI-2</strong>, and return to the main screen.</p>
+        <figure>
+          <img src="assets/06-app-settings.png" alt="Android application setup and Bluetooth screens">
+          <figcaption>Figure 5. Android application setup and Bluetooth selection screens.</figcaption>
+        </figure>
+        <p>Pressing the refresh button makes the device ready to operate. The application also allows quick adjustment of generated frequency and duty cycle values, which changes detector performance depending on whether the target is a large or small metal object.</p>
+      </section>
+
+      <section class="page-break">
+        <h2>Signal Observation</h2>
+        <p>An oscilloscope can be used to trace the shape and changes of the signal brought to the microcontroller input for analysis. At the beginning, the signal has a normal shape. When a metal object approaches the search coil, the amplitude and duty cycle of the signal change.</p>
+        <figure>
+          <img src="assets/07-oscilloscope-signal.jpg" alt="Oscilloscope signal from pulse induction detector circuit">
+          <figcaption>Figure 6. Oscilloscope observation of the detector signal.</figcaption>
+        </figure>
+        <p>The ESP32 detects this change and transmits the result through Bluetooth to the smartphone. The smartphone then provides the audio and visual notification.</p>
+      </section>
+
+      <section>
+        <h2>Performance</h2>
+        <p>In approximately realistic air tests, the detector reacts well, though the detection distance is significantly reduced when used on or near the ground. Its performance is almost identical to the previously presented Arduino Nano version, mainly because both versions rely on nearly the same Android application.</p>
+      </section>
+
+      <section>
+        <h2>Conclusion</h2>
+        <p>This project is a strong example of cooperation between a microcontroller and a smartphone. The ESP32 receives data from the external detection circuit and performs partial processing, while the smartphone handles more advanced processing and presentation.</p>
+        <p>The idea from Neco Desarrollo has potential beyond metal detectors. Since smartphones are widely available and provide high processing power, this approach can be applied to many other devices that benefit from simple external hardware paired with a capable mobile interface.</p>
+      </section>
+
+      <footer>
+        <p>Document arranged from the provided project description. Source project reference: <a href="https://neco-desarrollo.es/pirat-wireless-metal-detector">Neco Desarrollo PIRAT wireless metal detector</a>.</p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

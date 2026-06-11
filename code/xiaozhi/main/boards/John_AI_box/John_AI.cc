@@ -28,63 +28,98 @@
 #include <limits>
 
 #define TAG "JohnAI"
+namespace {
+/*
+brief   : Reset shared peripherals into a known startup state.
+input   : None
+output  : None
+*/
+void peripheral_init_reset() {
+    gpio_num_t reset_pin = PERIPHERAL_RESET_GPIO;
+    if (reset_pin == GPIO_NUM_NC) {
+        return;
+    }
+
+    gpio_config_t io_cfg = {};
+    io_cfg.intr_type = GPIO_INTR_DISABLE;
+    io_cfg.mode = GPIO_MODE_OUTPUT;
+    io_cfg.pin_bit_mask = 1ULL << reset_pin;
+    io_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+    ESP_ERROR_CHECK(gpio_config(&io_cfg));
+
+    int active_level = PERIPHERAL_RESET_ACTIVE_LOW ? 0 : 1;
+    int inactive_level = PERIPHERAL_RESET_ACTIVE_LOW ? 1 : 0;
+    gpio_set_level(reset_pin, active_level);
+    vTaskDelay(pdMS_TO_TICKS(PERIPHERAL_RESET_PULSE_MS));
+    gpio_set_level(reset_pin, inactive_level);
+}
+
+/*
+brief   : Lock the power by setting the power lock GPIO pin
+input   : None
+output  : None
+*/
+void power_lock_itself() {
+    gpio_config_t io_cfg = {};
+    io_cfg.intr_type = GPIO_INTR_DISABLE;
+    io_cfg.mode = GPIO_MODE_OUTPUT;
+    io_cfg.pin_bit_mask = 1ULL << POWER_LOCK_GPIO;
+    io_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+    ESP_ERROR_CHECK(gpio_config(&io_cfg));
+
+    // Set the power lock pin to the active level to lock power
+    gpio_set_level(POWER_LOCK_GPIO, 1);
+}
+
+/*
+brief   : Initialize I2C bus for peripherals
+input   : None
+output  : None
+*/
+void peripheral_init_i2c0() {
+    i2c_master_bus_handle_t i2c_bus_ = nullptr;
+    i2c_master_bus_config_t i2c_bus_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = PERIPHERAL_I2C_SDA_PIN,
+        .scl_io_num = PERIPHERAL_I2C_SCL_PIN,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+        .trans_queue_depth = 0,
+        .flags =
+            {
+                .enable_internal_pullup = 1,
+            },
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
+}
+
+/*
+brief   : Initialize SPI bus for LCD display
+input   : None
+output  : None
+*/
+void peripheral_init_spi2(void) {
+    spi_bus_config_t buscfg = {};
+    buscfg.mosi_io_num = DISPLAY_MOSI_PIN;
+    buscfg.miso_io_num = DISPLAY_MISO_PIN;
+    buscfg.sclk_io_num = DISPLAY_CLK_PIN;
+    buscfg.quadwp_io_num = GPIO_NUM_NC;
+    buscfg.quadhd_io_num = GPIO_NUM_NC;
+    buscfg.max_transfer_sz = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+}
+
+}  // namespace
 
 class JohnAIBoard : public WifiBoard {
 private:
-    i2c_master_bus_handle_t i2c_bus_ = nullptr;
     Button boot_button_;
     LcdDisplay* display_ = nullptr;
     Tsc2046Touch touch_;
     lv_indev_t* touch_indev_ = nullptr;
-
-    void InitializePeripheralsReset() {
-        gpio_num_t reset_pin = PERIPHERAL_RESET_GPIO;
-        if (reset_pin == GPIO_NUM_NC) {
-            return;
-        }
-
-        gpio_config_t io_cfg = {};
-        io_cfg.intr_type = GPIO_INTR_DISABLE;
-        io_cfg.mode = GPIO_MODE_OUTPUT;
-        io_cfg.pin_bit_mask = 1ULL << reset_pin;
-        io_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        io_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
-        ESP_ERROR_CHECK(gpio_config(&io_cfg));
-
-        int active_level = PERIPHERAL_RESET_ACTIVE_LOW ? 0 : 1;
-        int inactive_level = PERIPHERAL_RESET_ACTIVE_LOW ? 1 : 0;
-        gpio_set_level(reset_pin, active_level);
-        vTaskDelay(pdMS_TO_TICKS(PERIPHERAL_RESET_PULSE_MS));
-        gpio_set_level(reset_pin, inactive_level);
-    }
-
-    void InitializeI2c() {
-        i2c_master_bus_config_t i2c_bus_cfg = {
-            .i2c_port = I2C_NUM_0,
-            .sda_io_num = PERIPHERAL_I2C_SDA_PIN,
-            .scl_io_num = PERIPHERAL_I2C_SCL_PIN,
-            .clk_source = I2C_CLK_SRC_DEFAULT,
-            .glitch_ignore_cnt = 7,
-            .intr_priority = 0,
-            .trans_queue_depth = 0,
-            .flags =
-                {
-                    .enable_internal_pullup = 1,
-                },
-        };
-        ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
-    }
-
-    void InitializeSpi() {
-        spi_bus_config_t buscfg = {};
-        buscfg.mosi_io_num = DISPLAY_MOSI_PIN;
-        buscfg.miso_io_num = DISPLAY_MISO_PIN;
-        buscfg.sclk_io_num = DISPLAY_CLK_PIN;
-        buscfg.quadwp_io_num = GPIO_NUM_NC;
-        buscfg.quadhd_io_num = GPIO_NUM_NC;
-        buscfg.max_transfer_sz = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
-        ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
-    }
 
     void InitializeLcdDisplay() {
         esp_lcd_panel_io_handle_t panel_io = nullptr;
@@ -168,8 +203,8 @@ private:
             if (pressed) {
                 data->point.x = static_cast<lv_coord_t>(x);
                 data->point.y = static_cast<lv_coord_t>(y);
-                ESP_LOGW(TAG, "Touch x=%u y=%u raw_x=%u raw_y=%u", x, y,
-                         touch->last_raw_x(), touch->last_raw_y());
+                ESP_LOGW(TAG, "Touch x=%u y=%u raw_x=%u raw_y=%u", x, y, touch->last_raw_x(),
+                         touch->last_raw_y());
             }
         } else {
             data->state = LV_INDEV_STATE_RELEASED;
@@ -186,14 +221,14 @@ private:
 
 public:
     JohnAIBoard() : boot_button_(BOOT_BUTTON_GPIO) {
-        InitializePeripheralsReset();
-        InitializeI2c();
-        InitializeSpi();
+        peripheral_init_reset();
+        peripheral_init_i2c0();
+        peripheral_init_spi2();
         InitializeLcdDisplay();
         InitializeTouch();
         InitializeButtons();
         DefaultVolume();
-
+        power_lock_itself();
 
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();

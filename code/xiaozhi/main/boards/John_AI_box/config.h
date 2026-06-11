@@ -38,6 +38,9 @@
 #define VOLUME_UP_BUTTON_GPIO GPIO_NUM_NC
 #define VOLUME_DOWN_BUTTON_GPIO GPIO_NUM_NC
 
+//==========power lock itself =====================
+#define POWER_LOCK_GPIO GPIO_NUM_7
+
 // Shared reset pin for peripherals (IO0)
 #define PERIPHERAL_RESET_GPIO GPIO_NUM_0
 #define PERIPHERAL_RESET_ACTIVE_LOW 1
@@ -76,13 +79,14 @@
 #define TOUCH_IRQ_PIN GPIO_NUM_35
 
 // TSC2046 calibration and orientation
-#define TSC2046_X_MIN 302
-#define TSC2046_X_MAX 1727
-#define TSC2046_Y_MIN 312
-#define TSC2046_Y_MAX 1655
+#define TSC2046_X_MIN 325
+#define TSC2046_X_MAX 1675
+#define TSC2046_Y_MIN 396
+#define TSC2046_Y_MAX 1550
 #define TSC2046_SWAP_XY 0
 #define TSC2046_MIRROR_X 1
 #define TSC2046_MIRROR_Y 1
 #define TSC2046_SPI_CLOCK_HZ (2 * 1000 * 1000)
+#define TSC2046_SAMPLES 8
 
 #endif  // _BOARD_CONFIG_H_

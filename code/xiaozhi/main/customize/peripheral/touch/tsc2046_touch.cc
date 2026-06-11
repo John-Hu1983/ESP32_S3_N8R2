@@ -7,37 +7,31 @@
 
 #define TAG "TSC2046"
 
-#ifndef TSC2046_X_MIN
-#define TSC2046_X_MIN 200
-#endif
-#ifndef TSC2046_X_MAX
-#define TSC2046_X_MAX 3900
-#endif
-#ifndef TSC2046_Y_MIN
-#define TSC2046_Y_MIN 200
-#endif
-#ifndef TSC2046_Y_MAX
-#define TSC2046_Y_MAX 3900
-#endif
-#ifndef TSC2046_SWAP_XY
-#define TSC2046_SWAP_XY 0
-#endif
-#ifndef TSC2046_MIRROR_X
-#define TSC2046_MIRROR_X 0
-#endif
-#ifndef TSC2046_MIRROR_Y
-#define TSC2046_MIRROR_Y 0
-#endif
-#ifndef TSC2046_SPI_CLOCK_HZ
-#define TSC2046_SPI_CLOCK_HZ (2 * 1000 * 1000)
-#endif
-#ifndef TSC2046_SAMPLES
-#define TSC2046_SAMPLES 4
-#endif
-
 namespace {
 constexpr uint8_t kCmdReadX = 0xD0;
 constexpr uint8_t kCmdReadY = 0x90;
+
+uint16_t MedianValue(uint16_t* values, int count) {
+    if (count <= 0) {
+        return 0;
+    }
+
+    for (int i = 1; i < count; ++i) {
+        uint16_t key = values[i];
+        int j = i - 1;
+        while (j >= 0 && values[j] > key) {
+            values[j + 1] = values[j];
+            --j;
+        }
+        values[j + 1] = key;
+    }
+
+    if ((count % 2) == 1) {
+        return values[count / 2];
+    }
+    uint32_t mid_sum = static_cast<uint32_t>(values[count / 2 - 1]) + values[count / 2];
+    return static_cast<uint16_t>(mid_sum / 2);
+}
 }  // namespace
 
 bool Tsc2046Touch::Init(spi_host_device_t host, gpio_num_t clk, gpio_num_t mosi, gpio_num_t miso,
@@ -148,8 +142,8 @@ bool Tsc2046Touch::Read(uint16_t* x, uint16_t* y, bool* pressed) {
         return true;
     }
 
-    uint32_t x_sum = 0;
-    uint32_t y_sum = 0;
+    uint16_t x_vals[TSC2046_SAMPLES];
+    uint16_t y_vals[TSC2046_SAMPLES];
     int valid = 0;
     for (int i = 0; i < TSC2046_SAMPLES; ++i) {
         uint16_t raw_x = ReadChannel(kCmdReadX);
@@ -158,8 +152,8 @@ bool Tsc2046Touch::Read(uint16_t* x, uint16_t* y, bool* pressed) {
             raw_y > TSC2046_Y_MAX) {
             continue;
         }
-        x_sum += raw_x;
-        y_sum += raw_y;
+        x_vals[valid] = raw_x;
+        y_vals[valid] = raw_y;
         ++valid;
     }
 
@@ -167,8 +161,8 @@ bool Tsc2046Touch::Read(uint16_t* x, uint16_t* y, bool* pressed) {
         return true;
     }
 
-    uint16_t raw_x = static_cast<uint16_t>(x_sum / valid);
-    uint16_t raw_y = static_cast<uint16_t>(y_sum / valid);
+    uint16_t raw_x = MedianValue(x_vals, valid);
+    uint16_t raw_y = MedianValue(y_vals, valid);
     last_raw_x_ = raw_x;
     last_raw_y_ = raw_y;
 
