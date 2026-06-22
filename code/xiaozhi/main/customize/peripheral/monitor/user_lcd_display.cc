@@ -213,6 +213,14 @@ void UserLcdDisplay::SetupUI() {
     lv_label_set_text(mic_label_, "Say something...");
     lv_obj_set_style_text_color(mic_label_, lv_color_hex(0x0F172A), 0);
     lv_obj_set_style_text_font(mic_label_, &BUILTIN_TEXT_FONT, 0);
+
+    static lv_anim_t mic_scroll_anim;
+    lv_anim_init(&mic_scroll_anim);
+    lv_anim_set_delay(&mic_scroll_anim, 1000);
+    lv_anim_set_repeat_count(&mic_scroll_anim, LV_ANIM_REPEAT_INFINITE);
+    lv_obj_set_style_anim(mic_label_, &mic_scroll_anim, LV_PART_MAIN);
+    lv_obj_set_style_anim_duration(mic_label_, lv_anim_speed_clamped(60, 300, 60000),
+                                   LV_PART_MAIN);
 }
 
 void UserLcdDisplay::SetStatus(const char* status) {
@@ -284,8 +292,17 @@ void UserLcdDisplay::UpdateStatusBar(bool update_all) {
     strftime(time_str, sizeof(time_str), "%H:%M", tm_now);
     const char* wifi_icon = Board::GetInstance().GetNetworkStateIcon();
     DisplayLockGuard lock(this);
-    lv_label_set_text(time_label_, time_str);
+
+    const char* old_time = lv_label_get_text(time_label_);
+    if (update_all || old_time == nullptr || std::strcmp(old_time, time_str) != 0) {
+        lv_label_set_text(time_label_, time_str);
+    }
+
     if (wifi_icon_ != nullptr && wifi_icon != nullptr) {
+        const char* old_wifi_icon = lv_label_get_text(wifi_icon_);
+        if (!update_all && old_wifi_icon != nullptr && std::strcmp(old_wifi_icon, wifi_icon) == 0) {
+            return;
+        }
         lv_label_set_text(wifi_icon_, wifi_icon);
     }
 }
@@ -305,6 +322,10 @@ void UserLcdDisplay::UpdateTopLabel(const char* text) {
         return;
     }
     DisplayLockGuard lock(this);
+    const char* old_text = lv_label_get_text(top_label_);
+    if (old_text != nullptr && std::strcmp(old_text, text) == 0) {
+        return;
+    }
     lv_label_set_text(top_label_, text);
 }
 
@@ -313,6 +334,10 @@ void UserLcdDisplay::UpdateMicLabel(const char* text) {
         return;
     }
     DisplayLockGuard lock(this);
+    const char* old_text = lv_label_get_text(mic_label_);
+    if (old_text != nullptr && std::strcmp(old_text, text) == 0) {
+        return;
+    }
     lv_label_set_text(mic_label_, text);
 }
 #endif

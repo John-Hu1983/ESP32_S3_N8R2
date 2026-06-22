@@ -41,6 +41,9 @@
 //==========power lock itself =====================
 #define POWER_LOCK_GPIO GPIO_NUM_7
 
+//==========pulse inductor metal detector====================
+#define PULSE_INDUCTOR_GPIO GPIO_NUM_3
+
 // Shared reset pin for peripherals (IO0)
 #define PERIPHERAL_RESET_GPIO GPIO_NUM_0
 #define PERIPHERAL_RESET_ACTIVE_LOW 1
