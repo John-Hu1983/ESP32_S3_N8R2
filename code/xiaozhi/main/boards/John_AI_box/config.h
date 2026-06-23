@@ -4,7 +4,7 @@
 #include <driver/gpio.h>
 
 #if defined(__has_include)
-#if __has_include("esp_lcd_panel_nv3041.h")
+#if __has_include("esp_lcd_panel_nv3041.h") 
 #include "esp_lcd_panel_nv3041.h"
 #define HAVE_NV3041_PANEL 1
 #else
