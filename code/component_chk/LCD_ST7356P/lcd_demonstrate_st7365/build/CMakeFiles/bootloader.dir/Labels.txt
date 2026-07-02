@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/CMakeFiles/bootloader
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/CMakeFiles/bootloader.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/CMakeFiles/bootloader-complete.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+D:/JohnHu/Github_private/ESP32_S3_N8R2/code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
