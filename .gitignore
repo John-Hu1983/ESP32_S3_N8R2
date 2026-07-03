@@ -1,3 +1,4 @@
 /code/component_chk/ESP32_chk_pcba/build
 /code/component_chk/LCD_ST7356P/lcd_demonstrate_st7365/build
 /code/component_chk/LCD_ST7356P/build
+/code/component_chk/esp32_extender/build
