@@ -13,7 +13,7 @@
 #include "config.h"
 
 #define TAG "lcd_st7365p"
-#define LCD_YIELD_CHUNKS 16
+#define LCD_YIELD_CHUNKS 64
 
 static spi_device_handle_t lcd_spi;
 static uint8_t *lcd_dma_buffer;
@@ -29,7 +29,7 @@ static void lcd_yield_if_needed(uint32_t *chunk_count)
 	if (*chunk_count >= LCD_YIELD_CHUNKS)
 	{
 		*chunk_count = 0;
-		vTaskDelay(1);
+		taskYIELD();
 	}
 }
 
@@ -141,6 +141,9 @@ static esp_err_t lcd_gpio_init(void)
  */
 static esp_err_t lcd_spi_init(void)
 {
+	ESP_LOGI(TAG, "SPI init: host=%d sclk=IO%d mosi=IO%d cs=IO%d clock=%luHz", LCD_SPI_HOST, LCD_GPIO_SCL, LCD_GPIO_SDA, LCD_GPIO_CS, (unsigned long)LCD_SPI_CLOCK_HZ);
+	ESP_LOGI(TAG, "Heap before LCD buffers: internal DMA=%u PSRAM=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
 	const spi_bus_config_t bus_config = {
 		.mosi_io_num = LCD_GPIO_SDA,
 		.miso_io_num = -1,
@@ -159,11 +162,14 @@ static esp_err_t lcd_spi_init(void)
 	ESP_RETURN_ON_ERROR(spi_bus_initialize(LCD_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO), TAG, "spi_bus_initialize failed");
 	ESP_RETURN_ON_ERROR(spi_bus_add_device(LCD_SPI_HOST, &device_config, &lcd_spi), TAG, "spi_bus_add_device failed");
 
-	lcd_dma_buffer = heap_caps_malloc(LCD_DMA_PIXELS * 2, MALLOC_CAP_DMA);
+	lcd_dma_buffer = heap_caps_malloc(LCD_DMA_PIXELS * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 	if (lcd_dma_buffer == NULL)
 	{
+		ESP_LOGE(TAG, "failed to allocate %u-byte internal DMA buffer", (unsigned)(LCD_DMA_PIXELS * 2));
 		return ESP_ERR_NO_MEM;
 	}
+
+	ESP_LOGI(TAG, "LCD DMA buffer: %u bytes internal", (unsigned)(LCD_DMA_PIXELS * 2));
 
 	return ESP_OK;
 }
@@ -229,8 +235,6 @@ esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t
 		height = LCD_HEIGHT - y;
 	}
 
-	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + width - 1, y + height - 1), TAG, "set window failed");
-
 	const uint8_t color_hi = color >> 8;
 	const uint8_t color_lo = color & 0xFF;
 	for (uint32_t pixel = 0; pixel < LCD_DMA_PIXELS; pixel++)
@@ -238,9 +242,9 @@ esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t
 		lcd_dma_buffer[pixel * 2] = color_hi;
 		lcd_dma_buffer[pixel * 2 + 1] = color_lo;
 	}
-
 	uint32_t pixels_left = (uint32_t)width * height;
 	uint32_t chunk_count = 0;
+	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + width - 1, y + height - 1), TAG, "set window failed");
 	while (pixels_left > 0)
 	{
 		const uint32_t chunk_pixels = pixels_left > LCD_DMA_PIXELS ? LCD_DMA_PIXELS : pixels_left;
@@ -284,26 +288,33 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
 
 	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + draw_width - 1, y + draw_height - 1), TAG, "set image window failed");
 
-	const uint32_t total_pixels = (uint32_t)draw_width * draw_height;
+	const uint16_t rows_per_chunk = (LCD_DMA_PIXELS / draw_width) > 0 ? (LCD_DMA_PIXELS / draw_width) : 1;
 	uint32_t chunk_count = 0;
-	uint32_t sent_pixels = 0;
+	uint16_t row = 0;
 
-	while (sent_pixels < total_pixels)
+	while (row < draw_height)
 	{
-		const uint32_t chunk_pixels = (total_pixels - sent_pixels) > LCD_DMA_PIXELS ? LCD_DMA_PIXELS : (total_pixels - sent_pixels);
-
-		for (uint32_t index = 0; index < chunk_pixels; index++)
+		uint16_t chunk_rows = draw_height - row;
+		if (chunk_rows > rows_per_chunk)
 		{
-			const uint32_t pixel = sent_pixels + index;
-			const uint16_t source_x = pixel % draw_width;
-			const uint16_t source_y = pixel / draw_width;
-			const uint16_t color = image_rgb565[(uint32_t)source_y * source_width + source_x];
-			lcd_dma_buffer[index * 2] = color >> 8;
-			lcd_dma_buffer[index * 2 + 1] = color & 0xFF;
+			chunk_rows = rows_per_chunk;
 		}
 
+		uint8_t *destination = lcd_dma_buffer;
+		for (uint16_t local_row = 0; local_row < chunk_rows; local_row++)
+		{
+			const uint16_t *source_row = image_rgb565 + ((uint32_t)(row + local_row) * source_width);
+			for (uint16_t column = 0; column < draw_width; column++)
+			{
+				const uint16_t color = source_row[column];
+				*destination++ = color >> 8;
+				*destination++ = color & 0xFF;
+			}
+		}
+
+		const uint32_t chunk_pixels = (uint32_t)chunk_rows * draw_width;
 		ESP_RETURN_ON_ERROR(lcd_write_data(lcd_dma_buffer, chunk_pixels * 2), TAG, "image data failed");
-		sent_pixels += chunk_pixels;
+		row += chunk_rows;
 		// lcd_yield_if_needed(&chunk_count);
 	}
 
@@ -318,10 +329,14 @@ esp_err_t lcd_st7365p_init(void)
 {
 	const uint8_t madctl = lcd_get_madctl();
 
+	ESP_LOGI(TAG, "init GPIO");
 	ESP_RETURN_ON_ERROR(lcd_gpio_init(), TAG, "lcd_gpio_init failed");
+	ESP_LOGI(TAG, "init SPI and buffers");
 	ESP_RETURN_ON_ERROR(lcd_spi_init(), TAG, "lcd_spi_init failed");
+	ESP_LOGI(TAG, "reset panel");
 	lcd_reset();
 
+	ESP_LOGI(TAG, "send init commands");
 	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_SWRESET), TAG, "SWRESET failed");
 	vTaskDelay(pdMS_TO_TICKS(150));
 

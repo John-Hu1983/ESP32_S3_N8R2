@@ -24,6 +24,8 @@
 
 #define LCD_SPI_HOST     SPI2_HOST
 #define LCD_SPI_CLOCK_HZ (60 * 1000 * 1000)
-#define LCD_DMA_PIXELS   (1024 * 10)
+#define LCD_DISPLAY_SIZE (LCD_WIDTH * LCD_HEIGHT * 2)
+#define LCD_DMA_ROWS     20
+#define LCD_DMA_PIXELS   (LCD_WIDTH * LCD_DMA_ROWS)
 
 #endif
