@@ -2,11 +2,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "config.h"
 #include "dev/lcd_st7365p.h"
-#include "image/code/image_assets.h"
+#include "image_assets.h"
 
-#define TAG "lcd_demo"
+#define TAG "image_slideshow"
+#define SLIDE_INTERVAL_MS 1000
 
 static void stop_on_error(const char *operation, esp_err_t error)
 {
@@ -17,17 +17,35 @@ static void stop_on_error(const char *operation, esp_err_t error)
     }
 }
 
+static void draw_centered_image(const image_rgb565_t *image, uint16_t index)
+{
+    const uint16_t panel_width = lcd_st7365p_get_width();
+    const uint16_t panel_height = lcd_st7365p_get_height();
+    const uint16_t draw_x = (panel_width > image->width) ? (uint16_t)((panel_width - image->width) / 2) : 0;
+    const uint16_t draw_y = (panel_height > image->height) ? (uint16_t)((panel_height - image->height) / 2) : 0;
+    esp_err_t error;
+    //  error = lcd_st7365p_fill_rect(0, 0, panel_width, panel_height, 0x0000);
+    // if (error != ESP_OK)
+    // {
+    //     stop_on_error("lcd_st7365p_fill_rect", error);
+    // }
+
+    error = lcd_st7365p_draw_image(draw_x, draw_y, image->width, image->height, image->data);
+    if (error != ESP_OK)
+    {
+        stop_on_error("lcd_st7365p_draw_image", error);
+    }
+
+    ESP_LOGI(TAG, "Display image %u/%u", (unsigned)(index + 1), (unsigned)IMAGE_ASSET_COUNT);
+}
+
 /*
  * Application entry point.
- * Initialize the LCD once, clear the screen, then loop through all generated
- * image assets and display each one for 3 seconds.
+ * Initialize LCD, then display one image every second.
  */
 void app_main(void)
 {
-    ESP_LOGI(TAG, "ST7365P LCD SPI DMA demo start");
-    ESP_LOGI(TAG, "RS=IO%d SDA/MOSI=IO%d SCL/SCLK=IO%d CS=IO%d RESET=IO%d dir=%d %dx%d",
-             LCD_GPIO_RS, LCD_GPIO_SDA, LCD_GPIO_SCL, LCD_GPIO_CS, LCD_GPIO_RESET,
-             LCD_DIRECTION, lcd_st7365p_get_width(), lcd_st7365p_get_height());
+    ESP_LOGI(TAG, "Image slideshow start");
 
     esp_err_t error = lcd_st7365p_init();
     if (error != ESP_OK)
@@ -35,27 +53,27 @@ void app_main(void)
         stop_on_error("lcd_st7365p_init", error);
     }
 
-    error = lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), 0x0000);
-    if (error != ESP_OK)
+    if (IMAGE_ASSET_COUNT == 0)
     {
-        stop_on_error("lcd_st7365p_fill_rect", error);
+        ESP_LOGE(TAG, "No images found in image_assets");
+        while (1)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
     }
+
+    uint16_t image_index = 0;
 
     while (1)
     {
-        for (uint16_t index = 0; index < IMAGE_ASSET_COUNT; index++)
-        {
-            const image_rgb565_t *image = &image_assets[index];
-            const uint16_t x = image->width < lcd_st7365p_get_width() ? (lcd_st7365p_get_width() - image->width) / 2 : 0;
-            const uint16_t y = image->height < lcd_st7365p_get_height() ? (lcd_st7365p_get_height() - image->height) / 2 : 0;
+        draw_centered_image(&image_assets[image_index], image_index);
 
-            ESP_LOGI(TAG, "Display image %d: %dx%d", index + 1, image->width, image->height);
-            error = lcd_st7365p_draw_image(x, y, image->width, image->height, image->data);
-            if (error != ESP_OK)
-            {
-                stop_on_error("lcd_st7365p_draw_image", error);
-            }
-            vTaskDelay(pdMS_TO_TICKS(3000));
+        image_index++;
+        if (image_index >= IMAGE_ASSET_COUNT)
+        {
+            image_index = 0;
         }
+
+        vTaskDelay(pdMS_TO_TICKS(SLIDE_INTERVAL_MS));
     }
 }

@@ -1,6 +1,7 @@
 #ifndef LCD_ST7365P_H
 #define LCD_ST7365P_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "esp_err.h"
@@ -31,6 +32,12 @@ uint16_t lcd_st7365p_get_width(void);
 uint16_t lcd_st7365p_get_height(void);
 esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);
 esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint16_t *image_rgb565);
+esp_err_t lcd_st7365p_draw_area_rgb565_be(uint16_t x,
+										  uint16_t y,
+										  uint16_t width,
+										  uint16_t height,
+										  const uint8_t *rgb565_be,
+										  size_t byte_count);
 esp_err_t lcd_st7365p_draw_demo(void);
 
 #endif

@@ -39,17 +39,31 @@ static void lcd_yield_if_needed(uint32_t *chunk_count)
  */
 static uint8_t lcd_get_madctl(void)
 {
+    uint8_t madctl = 0;
+
 #if LCD_DIRECTION == LCD_DIR_VERTICAL_0
-	return LCD_MADCTL_BGR;
+	madctl = LCD_MADCTL_BGR;
 #elif LCD_DIRECTION == LCD_DIR_VERTICAL_180
-	return LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_BGR;
+	madctl = LCD_MADCTL_MX | LCD_MADCTL_MY | LCD_MADCTL_BGR;
 #elif LCD_DIRECTION == LCD_DIR_HORIZONTAL_0
-	return LCD_MADCTL_MV | LCD_MADCTL_MX | LCD_MADCTL_BGR;
+	madctl = LCD_MADCTL_MV | LCD_MADCTL_MX | LCD_MADCTL_BGR;
 #elif LCD_DIRECTION == LCD_DIR_HORIZONTAL_180
-	return LCD_MADCTL_MV | LCD_MADCTL_MY | LCD_MADCTL_BGR;
+	madctl = LCD_MADCTL_MV | LCD_MADCTL_MY | LCD_MADCTL_BGR;
 #else
 #error "Unsupported LCD_DIRECTION"
 #endif
+
+#if LCD_MIRROR_X
+	/* With MV set, logical X is controlled by MY; otherwise by MX. */
+	madctl ^= (madctl & LCD_MADCTL_MV) ? LCD_MADCTL_MY : LCD_MADCTL_MX;
+#endif
+
+#if LCD_MIRROR_Y
+	/* With MV set, logical Y is controlled by MX; otherwise by MY. */
+	madctl ^= (madctl & LCD_MADCTL_MV) ? LCD_MADCTL_MX : LCD_MADCTL_MY;
+#endif
+
+	return madctl;
 }
 
 /*
@@ -289,7 +303,6 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
 	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + draw_width - 1, y + draw_height - 1), TAG, "set image window failed");
 
 	const uint16_t rows_per_chunk = (LCD_DMA_PIXELS / draw_width) > 0 ? (LCD_DMA_PIXELS / draw_width) : 1;
-	uint32_t chunk_count = 0;
 	uint16_t row = 0;
 
 	while (row < draw_height)
@@ -315,7 +328,60 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
 		const uint32_t chunk_pixels = (uint32_t)chunk_rows * draw_width;
 		ESP_RETURN_ON_ERROR(lcd_write_data(lcd_dma_buffer, chunk_pixels * 2), TAG, "image data failed");
 		row += chunk_rows;
-		// lcd_yield_if_needed(&chunk_count);
+	}
+
+	return ESP_OK;
+}
+
+/*
+ * Draw a rectangle from already byte-swapped RGB565 data.
+ * Input bytes must be in panel order (high byte first for each pixel), which
+ * lets GUI stacks like LVGL flush directly without extra conversion.
+ */
+esp_err_t lcd_st7365p_draw_area_rgb565_be(uint16_t x,
+						  uint16_t y,
+						  uint16_t width,
+						  uint16_t height,
+						  const uint8_t *rgb565_be,
+						  size_t byte_count)
+{
+	if (rgb565_be == NULL)
+	{
+		return ESP_ERR_INVALID_ARG;
+	}
+	if (width == 0 || height == 0)
+	{
+		return ESP_OK;
+	}
+	if (x >= LCD_WIDTH || y >= LCD_HEIGHT || (x + width) > LCD_WIDTH || (y + height) > LCD_HEIGHT)
+	{
+		return ESP_ERR_INVALID_ARG;
+	}
+
+	const size_t required_bytes = (size_t)width * height * 2;
+	if (byte_count < required_bytes)
+	{
+		return ESP_ERR_INVALID_SIZE;
+	}
+
+	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + width - 1, y + height - 1), TAG, "set window failed");
+
+	const uint8_t *source = rgb565_be;
+	size_t bytes_left = required_bytes;
+	uint32_t chunk_count = 0;
+
+	while (bytes_left > 0)
+	{
+		size_t chunk_bytes = bytes_left;
+		if (chunk_bytes > (LCD_DMA_PIXELS * 2))
+		{
+			chunk_bytes = LCD_DMA_PIXELS * 2;
+		}
+
+		ESP_RETURN_ON_ERROR(lcd_write_data(source, chunk_bytes), TAG, "raw area data failed");
+		source += chunk_bytes;
+		bytes_left -= chunk_bytes;
+		lcd_yield_if_needed(&chunk_count);
 	}
 
 	return ESP_OK;
