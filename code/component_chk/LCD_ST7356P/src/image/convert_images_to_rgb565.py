@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from PIL import Image
 
@@ -10,60 +11,55 @@ def rgb888_to_rgb565(red, green, blue):
     return ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3)
 
 
-def write_image_files(image_path):
-    stem = image_path.stem
-    symbol = f"{stem}_rgb565"
-    macro = stem.upper()
+def sanitize_identifier(value):
+    identifier = re.sub(r"[^0-9A-Za-z]+", "_", value)
+    identifier = re.sub(r"_+", "_", identifier).strip("_").lower()
+    if not identifier:
+        identifier = "image"
+    if identifier[0].isdigit():
+        identifier = f"img_{identifier}"
+    return identifier
+
+
+def build_asset(image_path, used_symbols):
+    relative_stem = image_path.relative_to(SOURCE_DIR).with_suffix("")
+    base_symbol = sanitize_identifier("_".join(relative_stem.parts))
+    symbol = f"{base_symbol}_rgb565"
+    next_index = 2
+    while symbol in used_symbols:
+        symbol = f"{base_symbol}_{next_index}_rgb565"
+        next_index += 1
+    used_symbols.add(symbol)
 
     with Image.open(image_path) as image:
         image = image.convert("RGB")
         width, height = image.size
         values = [rgb888_to_rgb565(*pixel) for pixel in image.getdata()]
 
-    header_path = CODE_DIR / f"{stem}.h"
-    source_path = CODE_DIR / f"{stem}.c"
-
-    header_path.write_text(
-        f"#ifndef {macro}_H\n"
-        f"#define {macro}_H\n\n"
-        f"#include <stdint.h>\n\n"
-        f"#define {macro}_WIDTH  {width}\n"
-        f"#define {macro}_HEIGHT {height}\n\n"
-        f"extern const uint16_t {symbol}[{width * height}];\n\n"
-        f"#endif\n",
-        encoding="ascii",
-    )
-
-    source_lines = [
-        f"#include \"{stem}.h\"",
-        "",
-        f"const uint16_t {symbol}[{width * height}] = {{",
-    ]
-    for index in range(0, len(values), 12):
-        chunk = values[index:index + 12]
-        source_lines.append("\t" + ", ".join(f"0x{value:04X}" for value in chunk) + ",")
-    source_lines.extend(["};", ""])
-    source_path.write_text("\n".join(source_lines), encoding="ascii")
-
-    return stem, symbol, width, height
+    return {
+        "name": relative_stem.as_posix(),
+        "symbol": symbol,
+        "width": width,
+        "height": height,
+        "values": values,
+    }
 
 
-def main():
-    CODE_DIR.mkdir(parents=True, exist_ok=True)
-    images = sorted(SOURCE_DIR.glob("*.jpg")) + sorted(SOURCE_DIR.glob("*.jpeg"))
-    if not images:
-        raise SystemExit(f"No JPG files found in {SOURCE_DIR}")
+def remove_legacy_generated_files():
+    for path in CODE_DIR.glob("image*.c"):
+        if path.name != "image_assets.c":
+            path.unlink()
+    for path in CODE_DIR.glob("image*.h"):
+        if path.name != "image_assets.h":
+            path.unlink()
 
-    assets = [write_image_files(image_path) for image_path in images]
 
-    include_lines = [f"#include \"{stem}.h\"" for stem, _, _, _ in assets]
+def write_assets_files(assets):
     assets_h = [
         "#ifndef IMAGE_ASSETS_H",
         "#define IMAGE_ASSETS_H",
         "",
         "#include <stdint.h>",
-        "",
-        *include_lines,
         "",
         "typedef struct {",
         "\tuint16_t width;",
@@ -83,17 +79,42 @@ def main():
     assets_c = [
         "#include \"image_assets.h\"",
         "",
-        "const image_rgb565_t image_assets[IMAGE_ASSET_COUNT] = {",
     ]
-    for stem, symbol, _, _ in assets:
-        macro = stem.upper()
-        assets_c.append(f"\t{{ {macro}_WIDTH, {macro}_HEIGHT, {symbol} }},")
+
+    for asset in assets:
+        assets_c.append(f"// {asset['name']}")
+        assets_c.append(f"static const uint16_t {asset['symbol']}[{asset['width'] * asset['height']}] = {{")
+        for index in range(0, len(asset["values"]), 12):
+            chunk = asset["values"][index:index + 12]
+            assets_c.append("\t" + ", ".join(f"0x{value:04X}" for value in chunk) + ",")
+        assets_c.append("};")
+        assets_c.append("")
+
+    assets_c.append("const image_rgb565_t image_assets[IMAGE_ASSET_COUNT] = {")
+    for asset in assets:
+        assets_c.append(f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']} }},")
     assets_c.extend(["};", ""])
     (CODE_DIR / "image_assets.c").write_text("\n".join(assets_c), encoding="ascii")
 
+def main():
+    CODE_DIR.mkdir(parents=True, exist_ok=True)
+    image_patterns = ("*.jpg", "*.jpeg", "*.png")
+    images = []
+    for pattern in image_patterns:
+        images.extend(SOURCE_DIR.rglob(pattern))
+    images = sorted(images, key=lambda path: path.relative_to(SOURCE_DIR).as_posix().lower())
+    if not images:
+        raise SystemExit(f"No image files found in {SOURCE_DIR}")
+
+    used_symbols = set()
+    assets = [build_asset(image_path, used_symbols) for image_path in images]
+
+    remove_legacy_generated_files()
+    write_assets_files(assets)
+
     print(f"Generated {len(assets)} RGB565 image assets in {CODE_DIR}")
-    for stem, symbol, width, height in assets:
-        print(f"{stem}: {width}x{height} -> {symbol}")
+    for asset in assets:
+        print(f"{asset['name']}: {asset['width']}x{asset['height']} -> {asset['symbol']}")
 
 
 if __name__ == "__main__":

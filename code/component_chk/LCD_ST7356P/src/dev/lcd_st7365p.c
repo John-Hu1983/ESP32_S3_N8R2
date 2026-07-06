@@ -1,6 +1,8 @@
 #include "lcd_st7365p.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -17,6 +19,46 @@
 
 static spi_device_handle_t lcd_spi;
 static uint8_t *lcd_dma_buffer;
+static size_t lcd_dma_buffer_bytes;
+static uint32_t lcd_dma_buffer_pixels;
+
+/*
+ * Send one SPI transaction with explicit RS/DC level.
+ * For <=4 bytes, use SPI_TRANS_USE_TXDATA to avoid extra memory indirection.
+ * When keep_cs is true, CS stays active after this transaction.
+ */
+static esp_err_t lcd_write_raw(const void *data, size_t length, int dc_level, bool keep_cs)
+{
+	if (length == 0)
+	{
+		return ESP_OK;
+	}
+
+	spi_transaction_t transaction = {
+		.length = length * 8,
+	};
+
+	if (length <= sizeof(transaction.tx_data))
+	{
+		transaction.flags |= SPI_TRANS_USE_TXDATA;
+		memcpy(transaction.tx_data, data, length);
+	}
+	else
+	{
+		transaction.tx_buffer = data;
+	}
+
+	if (keep_cs)
+	{
+		transaction.flags |= SPI_TRANS_CS_KEEP_ACTIVE;
+	}
+
+	gpio_set_level(LCD_GPIO_RS, dc_level);
+	ESP_RETURN_ON_ERROR(spi_device_polling_start(lcd_spi, &transaction, portMAX_DELAY), TAG, "spi_device_polling_start failed");
+	ESP_RETURN_ON_ERROR(spi_device_polling_end(lcd_spi, portMAX_DELAY), TAG, "spi_device_polling_end failed");
+
+	return ESP_OK;
+}
 
 /*
  * Yield to FreeRTOS after several SPI chunks.
@@ -39,7 +81,7 @@ static void lcd_yield_if_needed(uint32_t *chunk_count)
  */
 static uint8_t lcd_get_madctl(void)
 {
-    uint8_t madctl = 0;
+	uint8_t madctl = 0;
 
 #if LCD_DIRECTION == LCD_DIR_VERTICAL_0
 	madctl = LCD_MADCTL_BGR;
@@ -90,13 +132,7 @@ uint16_t lcd_st7365p_get_height(void)
  */
 static esp_err_t lcd_write_command(uint8_t command)
 {
-	spi_transaction_t transaction = {
-		.length = 8,
-		.tx_buffer = &command,
-	};
-
-	gpio_set_level(LCD_GPIO_RS, 0);
-	return spi_device_polling_transmit(lcd_spi, &transaction);
+	return lcd_write_raw(&command, sizeof(command), 0, false);
 }
 
 /*
@@ -106,18 +142,7 @@ static esp_err_t lcd_write_command(uint8_t command)
  */
 static esp_err_t lcd_write_data(const void *data, size_t length)
 {
-	if (length == 0)
-	{
-		return ESP_OK;
-	}
-
-	spi_transaction_t transaction = {
-		.length = length * 8,
-		.tx_buffer = data,
-	};
-
-	gpio_set_level(LCD_GPIO_RS, 1);
-	return spi_device_polling_transmit(lcd_spi, &transaction);
+	return lcd_write_raw(data, length, 1, false);
 }
 
 /*
@@ -125,7 +150,7 @@ static esp_err_t lcd_write_data(const void *data, size_t length)
  */
 static esp_err_t lcd_write_data_byte(uint8_t data)
 {
-	return lcd_write_data(&data, sizeof(data));
+	return lcd_write_raw(&data, sizeof(data), 1, false);
 }
 
 /*
@@ -158,13 +183,19 @@ static esp_err_t lcd_spi_init(void)
 	ESP_LOGI(TAG, "SPI init: host=%d sclk=IO%d mosi=IO%d cs=IO%d clock=%luHz", LCD_SPI_HOST, LCD_GPIO_SCL, LCD_GPIO_SDA, LCD_GPIO_CS, (unsigned long)LCD_SPI_CLOCK_HZ);
 	ESP_LOGI(TAG, "Heap before LCD buffers: internal DMA=%u PSRAM=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
+	/*
+	 * Request a large transfer size so the SPI driver can expose the largest
+	 * transaction length allowed by both driver configuration and hardware.
+	 */
+	const size_t requested_max_transfer_bytes = LCD_DISPLAY_SIZE;
+
 	const spi_bus_config_t bus_config = {
 		.mosi_io_num = LCD_GPIO_SDA,
 		.miso_io_num = -1,
 		.sclk_io_num = LCD_GPIO_SCL,
 		.quadwp_io_num = -1,
 		.quadhd_io_num = -1,
-		.max_transfer_sz = LCD_DMA_PIXELS * 2,
+		.max_transfer_sz = requested_max_transfer_bytes,
 	};
 	const spi_device_interface_config_t device_config = {
 		.clock_speed_hz = LCD_SPI_CLOCK_HZ,
@@ -176,14 +207,32 @@ static esp_err_t lcd_spi_init(void)
 	ESP_RETURN_ON_ERROR(spi_bus_initialize(LCD_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO), TAG, "spi_bus_initialize failed");
 	ESP_RETURN_ON_ERROR(spi_bus_add_device(LCD_SPI_HOST, &device_config, &lcd_spi), TAG, "spi_bus_add_device failed");
 
-	lcd_dma_buffer = heap_caps_malloc(LCD_DMA_PIXELS * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+	size_t max_transaction_bytes = 0;
+	ESP_RETURN_ON_ERROR(spi_bus_get_max_transaction_len(LCD_SPI_HOST, &max_transaction_bytes), TAG, "spi_bus_get_max_transaction_len failed");
+
+	/* RGB565 needs an even-byte DMA chunk size. */
+	max_transaction_bytes &= ~((size_t)1);
+	if (max_transaction_bytes < 2)
+	{
+		ESP_LOGE(TAG, "invalid max transaction size: %u", (unsigned)max_transaction_bytes);
+		return ESP_ERR_INVALID_SIZE;
+	}
+
+	lcd_dma_buffer_bytes = max_transaction_bytes;
+	lcd_dma_buffer_pixels = (uint32_t)(lcd_dma_buffer_bytes / 2);
+
+	lcd_dma_buffer = heap_caps_malloc(lcd_dma_buffer_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
 	if (lcd_dma_buffer == NULL)
 	{
-		ESP_LOGE(TAG, "failed to allocate %u-byte internal DMA buffer", (unsigned)(LCD_DMA_PIXELS * 2));
+		ESP_LOGE(TAG, "failed to allocate %u-byte internal DMA buffer", (unsigned)lcd_dma_buffer_bytes);
 		return ESP_ERR_NO_MEM;
 	}
 
-	ESP_LOGI(TAG, "LCD DMA buffer: %u bytes internal", (unsigned)(LCD_DMA_PIXELS * 2));
+	ESP_LOGI(TAG, "LCD DMA: requested max=%u, actual max=%u, buffer=%u bytes (%u pixels)",
+			 (unsigned)requested_max_transfer_bytes,
+			 (unsigned)max_transaction_bytes,
+			 (unsigned)lcd_dma_buffer_bytes,
+			 (unsigned)lcd_dma_buffer_pixels);
 
 	return ESP_OK;
 }
@@ -206,6 +255,9 @@ static void lcd_reset(void)
  */
 static esp_err_t lcd_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
+	const uint8_t command_caset = LCD_CMD_CASET;
+	const uint8_t command_raset = LCD_CMD_RASET;
+	const uint8_t command_ramwr = LCD_CMD_RAMWR;
 	const uint8_t column_data[] = {
 		x0 >> 8,
 		x0 & 0xFF,
@@ -218,12 +270,46 @@ static esp_err_t lcd_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, u
 		y1 >> 8,
 		y1 & 0xFF,
 	};
+	esp_err_t error = spi_device_acquire_bus(lcd_spi, portMAX_DELAY);
+	if (error != ESP_OK)
+	{
+		ESP_LOGE(TAG, "spi_device_acquire_bus failed: %s", esp_err_to_name(error));
+		return error;
+	}
 
-	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_CASET), TAG, "CASET failed");
-	ESP_RETURN_ON_ERROR(lcd_write_data(column_data, sizeof(column_data)), TAG, "CASET data failed");
-	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_RASET), TAG, "RASET failed");
-	ESP_RETURN_ON_ERROR(lcd_write_data(row_data, sizeof(row_data)), TAG, "RASET data failed");
-	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_RAMWR), TAG, "RAMWR failed");
+	/*
+	 * Send CASET/RASET/RAMWR as one burst while keeping CS active to reduce
+	 * inter-transaction gaps between short command/data packets.
+	 */
+	error = lcd_write_raw(&command_caset, sizeof(command_caset), 0, true);
+	if (error != ESP_OK)
+	{
+		goto release_bus;
+	}
+	error = lcd_write_raw(column_data, sizeof(column_data), 1, true);
+	if (error != ESP_OK)
+	{
+		goto release_bus;
+	}
+	error = lcd_write_raw(&command_raset, sizeof(command_raset), 0, true);
+	if (error != ESP_OK)
+	{
+		goto release_bus;
+	}
+	error = lcd_write_raw(row_data, sizeof(row_data), 1, true);
+	if (error != ESP_OK)
+	{
+		goto release_bus;
+	}
+	error = lcd_write_raw(&command_ramwr, sizeof(command_ramwr), 0, false);
+
+release_bus:
+	spi_device_release_bus(lcd_spi);
+	if (error != ESP_OK)
+	{
+		ESP_LOGE(TAG, "set address window burst failed: %s", esp_err_to_name(error));
+		return error;
+	}
 
 	return ESP_OK;
 }
@@ -251,7 +337,7 @@ esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t
 
 	const uint8_t color_hi = color >> 8;
 	const uint8_t color_lo = color & 0xFF;
-	for (uint32_t pixel = 0; pixel < LCD_DMA_PIXELS; pixel++)
+	for (uint32_t pixel = 0; pixel < lcd_dma_buffer_pixels; pixel++)
 	{
 		lcd_dma_buffer[pixel * 2] = color_hi;
 		lcd_dma_buffer[pixel * 2 + 1] = color_lo;
@@ -261,7 +347,7 @@ esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t
 	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + width - 1, y + height - 1), TAG, "set window failed");
 	while (pixels_left > 0)
 	{
-		const uint32_t chunk_pixels = pixels_left > LCD_DMA_PIXELS ? LCD_DMA_PIXELS : pixels_left;
+		const uint32_t chunk_pixels = pixels_left > lcd_dma_buffer_pixels ? lcd_dma_buffer_pixels : pixels_left;
 		ESP_RETURN_ON_ERROR(lcd_write_data(lcd_dma_buffer, chunk_pixels * 2), TAG, "pixel data failed");
 		pixels_left -= chunk_pixels;
 		lcd_yield_if_needed(&chunk_count);
@@ -278,6 +364,8 @@ esp_err_t lcd_st7365p_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t
  */
 esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint16_t *image_rgb565)
 {
+	esp_err_t error;
+
 	if (image_rgb565 == NULL)
 	{
 		return ESP_ERR_INVALID_ARG;
@@ -300,9 +388,24 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
 		draw_height = LCD_HEIGHT - y;
 	}
 
-	ESP_RETURN_ON_ERROR(lcd_set_address_window(x, y, x + draw_width - 1, y + draw_height - 1), TAG, "set image window failed");
+	error = lcd_set_address_window(x, y, x + draw_width - 1, y + draw_height - 1);
+	if (error != ESP_OK)
+	{
+		ESP_LOGE(TAG, "set image window failed: %s", esp_err_to_name(error));
+		return error;
+	}
 
-	const uint16_t rows_per_chunk = (LCD_DMA_PIXELS / draw_width) > 0 ? (LCD_DMA_PIXELS / draw_width) : 1;
+	/*
+	 * Hold SPI bus during the image data phase to reduce chunk-to-chunk overhead.
+	 */
+	error = spi_device_acquire_bus(lcd_spi, portMAX_DELAY);
+	if (error != ESP_OK)
+	{
+		ESP_LOGE(TAG, "spi_device_acquire_bus failed: %s", esp_err_to_name(error));
+		return error;
+	}
+
+	const uint16_t rows_per_chunk = (lcd_dma_buffer_pixels / draw_width) > 0 ? (lcd_dma_buffer_pixels / draw_width) : 1;
 	uint16_t row = 0;
 
 	while (row < draw_height)
@@ -313,21 +416,52 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
 			chunk_rows = rows_per_chunk;
 		}
 
-		uint8_t *destination = lcd_dma_buffer;
-		for (uint16_t local_row = 0; local_row < chunk_rows; local_row++)
+		const uint32_t chunk_pixels = (uint32_t)chunk_rows * draw_width;
+		uint16_t *destination16 = (uint16_t *)lcd_dma_buffer;
+
+		/*
+		 * Fast path: no right-side clipping, source rows are contiguous.
+		 * Use 16-bit byte-swap store instead of two 8-bit writes per pixel.
+		 */
+		if (draw_width == source_width)
 		{
-			const uint16_t *source_row = image_rgb565 + ((uint32_t)(row + local_row) * source_width);
-			for (uint16_t column = 0; column < draw_width; column++)
+			const uint16_t *source = image_rgb565 + ((uint32_t)row * source_width);
+			for (uint32_t pixel = 0; pixel < chunk_pixels; pixel++)
 			{
-				const uint16_t color = source_row[column];
-				*destination++ = color >> 8;
-				*destination++ = color & 0xFF;
+				destination16[pixel] = __builtin_bswap16(source[pixel]);
+			}
+		}
+		else
+		{
+			uint32_t dest_index = 0;
+			for (uint16_t local_row = 0; local_row < chunk_rows; local_row++)
+			{
+				const uint16_t *source_row = image_rgb565 + ((uint32_t)(row + local_row) * source_width);
+				for (uint16_t column = 0; column < draw_width; column++)
+				{
+					destination16[dest_index++] = __builtin_bswap16(source_row[column]);
+				}
 			}
 		}
 
-		const uint32_t chunk_pixels = (uint32_t)chunk_rows * draw_width;
-		ESP_RETURN_ON_ERROR(lcd_write_data(lcd_dma_buffer, chunk_pixels * 2), TAG, "image data failed");
+		error = lcd_write_raw(lcd_dma_buffer,
+							  chunk_pixels * 2,
+							  1,
+							  (row + chunk_rows) < draw_height);
+		if (error != ESP_OK)
+		{
+			ESP_LOGE(TAG, "image data failed: %s", esp_err_to_name(error));
+			goto release_bus;
+		}
+
 		row += chunk_rows;
+	}
+
+release_bus:
+	spi_device_release_bus(lcd_spi);
+	if (error != ESP_OK)
+	{
+		return error;
 	}
 
 	return ESP_OK;
@@ -339,11 +473,11 @@ esp_err_t lcd_st7365p_draw_image(uint16_t x, uint16_t y, uint16_t width, uint16_
  * lets GUI stacks like LVGL flush directly without extra conversion.
  */
 esp_err_t lcd_st7365p_draw_area_rgb565_be(uint16_t x,
-						  uint16_t y,
-						  uint16_t width,
-						  uint16_t height,
-						  const uint8_t *rgb565_be,
-						  size_t byte_count)
+										  uint16_t y,
+										  uint16_t width,
+										  uint16_t height,
+										  const uint8_t *rgb565_be,
+										  size_t byte_count)
 {
 	if (rgb565_be == NULL)
 	{
@@ -373,9 +507,9 @@ esp_err_t lcd_st7365p_draw_area_rgb565_be(uint16_t x,
 	while (bytes_left > 0)
 	{
 		size_t chunk_bytes = bytes_left;
-		if (chunk_bytes > (LCD_DMA_PIXELS * 2))
+		if (chunk_bytes > lcd_dma_buffer_bytes)
 		{
-			chunk_bytes = LCD_DMA_PIXELS * 2;
+			chunk_bytes = lcd_dma_buffer_bytes;
 		}
 
 		ESP_RETURN_ON_ERROR(lcd_write_data(source, chunk_bytes), TAG, "raw area data failed");

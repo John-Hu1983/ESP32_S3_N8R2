@@ -63,7 +63,7 @@ void app_main(void)
     }
 
     uint16_t image_index = 0;
-
+    lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), 0x0000);
     while (1)
     {
         draw_centered_image(&image_assets[image_index], image_index);
