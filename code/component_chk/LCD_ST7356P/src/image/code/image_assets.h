@@ -9,7 +9,7 @@ typedef struct {
 	const uint16_t *data;
 } image_rgb565_t;
 
-#define IMAGE_ASSET_COUNT 20
+#define IMAGE_ASSET_COUNT 22
 
 extern const image_rgb565_t image_assets[IMAGE_ASSET_COUNT];
 

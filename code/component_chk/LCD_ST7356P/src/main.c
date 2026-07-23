@@ -6,7 +6,7 @@
 #include "image_assets.h"
 
 #define TAG "image_slideshow"
-#define SLIDE_INTERVAL_MS 1000
+#define SLIDE_INTERVAL_MS 333
 
 static void stop_on_error(const char *operation, esp_err_t error)
 {
