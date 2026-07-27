@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 from pathlib import Path
 import re
 
 from PIL import Image
 
-SOURCE_DIR = Path(__file__).resolve().parent / "source"
-CODE_DIR = Path(__file__).resolve().parent / "code"
-FRAME_STRIDE_PER_FOLDER = 10
+SCRIPT_DIR = Path(__file__).resolve().parent
+SOURCE_SETS_DIR = SCRIPT_DIR / "source" / "gif_sets"
+CODE_DIR = SCRIPT_DIR / "code"
+SET_SOURCE_PREFIX = "image_assets_"
+REGISTRY_SOURCE_FILE = "image_gif_sets.c"
 
 
 def rgb888_to_rgb565(red, green, blue):
@@ -33,32 +37,31 @@ def natural_sort_key(value):
     return key
 
 
-def image_path_sort_key(path):
-    return natural_sort_key(path.relative_to(SOURCE_DIR).as_posix())
+def list_set_directories():
+    if not SOURCE_SETS_DIR.exists():
+        raise SystemExit(f"Missing GIF set directory: {SOURCE_SETS_DIR}")
+
+    set_dirs = sorted(
+        [path for path in SOURCE_SETS_DIR.iterdir() if path.is_dir()],
+        key=lambda path: natural_sort_key(path.name),
+    )
+    if not set_dirs:
+        raise SystemExit(f"No GIF set directories found in {SOURCE_SETS_DIR}")
+    return set_dirs
 
 
-def select_images_per_folder(images, stride):
-    if stride <= 1:
-        return images
-
-    folder_to_images = {}
-    for image_path in images:
-        folder = image_path.parent.relative_to(SOURCE_DIR).as_posix()
-        folder_to_images.setdefault(folder, []).append(image_path)
-
-    selected = []
-    for folder in sorted(folder_to_images.keys(), key=natural_sort_key):
-        folder_images = sorted(
-            folder_to_images[folder],
-            key=lambda path: natural_sort_key(path.stem),
-        )
-        selected.extend(folder_images[::stride])
-
-    return sorted(selected, key=image_path_sort_key)
+def load_set_frames(set_dir):
+    frames = sorted(
+        set_dir.glob("*.png"),
+        key=lambda path: natural_sort_key(path.name),
+    )
+    if not frames:
+        raise SystemExit(f"No PNG frames found in {set_dir}")
+    return frames
 
 
-def build_asset(image_path, used_symbols):
-    relative_stem = image_path.relative_to(SOURCE_DIR).with_suffix("")
+def build_asset(image_path, set_root, used_symbols):
+    relative_stem = image_path.relative_to(set_root).with_suffix("")
     base_symbol = sanitize_identifier("_".join(relative_stem.parts))
     symbol = f"{base_symbol}_rgb565"
     next_index = 2
@@ -70,7 +73,11 @@ def build_asset(image_path, used_symbols):
     with Image.open(image_path) as image:
         image = image.convert("RGB")
         width, height = image.size
-        values = [rgb888_to_rgb565(*pixel) for pixel in image.getdata()]
+        rgb_bytes = image.tobytes()
+        values = [
+            rgb888_to_rgb565(rgb_bytes[index], rgb_bytes[index + 1], rgb_bytes[index + 2])
+            for index in range(0, len(rgb_bytes), 3)
+        ]
 
     return {
         "name": relative_stem.as_posix(),
@@ -82,20 +89,30 @@ def build_asset(image_path, used_symbols):
 
 
 def remove_legacy_generated_files():
-    for path in CODE_DIR.glob("image*.c"):
-        if path.name != "image_assets.c":
-            path.unlink()
-    for path in CODE_DIR.glob("image*.h"):
-        if path.name != "image_assets.h":
-            path.unlink()
+    legacy_file = CODE_DIR / "image_assets.c"
+    if legacy_file.exists():
+        legacy_file.unlink()
+
+    for path in CODE_DIR.glob(f"{SET_SOURCE_PREFIX}*.c"):
+        path.unlink()
+
+    for path in CODE_DIR.glob(f"{SET_SOURCE_PREFIX}*.h"):
+        path.unlink()
+
+    registry_file = CODE_DIR / REGISTRY_SOURCE_FILE
+    if registry_file.exists():
+        registry_file.unlink()
 
 
-def write_assets_files(assets):
+def write_assets_header(set_infos):
+    set_count = len(set_infos)
+
     assets_h = [
         "#ifndef IMAGE_ASSETS_H",
         "#define IMAGE_ASSETS_H",
         "",
         "#include <stdint.h>",
+        "#include \"image_asset_config.h\"",
         "",
         "typedef struct {",
         "\tuint16_t width;",
@@ -103,14 +120,42 @@ def write_assets_files(assets):
         "\tconst uint16_t *data;",
         "} image_rgb565_t;",
         "",
-        f"#define IMAGE_ASSET_COUNT {len(assets)}",
-        "",
-        "extern const image_rgb565_t image_assets[IMAGE_ASSET_COUNT];",
-        "",
-        "#endif",
+        f"#define IMAGE_GIF_SET_COUNT {set_count}",
         "",
     ]
+
+    for set_info in set_infos:
+        set_index = set_info["index"]
+        assets_h.append(f"#define IMAGE_ASSET_COUNT_{set_index} {set_info['asset_count']}")
+        assets_h.append(f"#define IMAGE_GIF_SET_FOLDER_{set_index} \"{set_info['set_dir_name']}\"")
+
+    assets_h.append("")
+
+    for set_info in set_infos:
+        set_index = set_info["index"]
+        assets_h.append(f"extern const image_rgb565_t image_assets_{set_index}[IMAGE_ASSET_COUNT_{set_index}];")
+
+    assets_h.extend(
+        [
+            "",
+            "typedef struct {",
+            "\tconst char *folder;",
+            "\tuint16_t frame_count;",
+            "\tconst image_rgb565_t *frames;",
+            "} image_gif_set_t;",
+            "",
+            "extern const image_gif_set_t image_gif_sets[IMAGE_GIF_SET_COUNT];",
+            "",
+            "#endif",
+            "",
+        ]
+    )
     (CODE_DIR / "image_assets.h").write_text("\n".join(assets_h), encoding="ascii")
+
+
+def write_set_source(set_info):
+    assets = set_info["assets"]
+    set_index = set_info["index"]
 
     assets_c = [
         "#include \"image_assets.h\"",
@@ -126,38 +171,71 @@ def write_assets_files(assets):
         assets_c.append("};")
         assets_c.append("")
 
-    assets_c.append("const image_rgb565_t image_assets[IMAGE_ASSET_COUNT] = {")
+    assets_c.append(f"const image_rgb565_t image_assets_{set_index}[IMAGE_ASSET_COUNT_{set_index}] = {{")
     for asset in assets:
         assets_c.append(f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']} }},")
     assets_c.extend(["};", ""])
-    (CODE_DIR / "image_assets.c").write_text("\n".join(assets_c), encoding="ascii")
+
+    source_file_path = CODE_DIR / f"{SET_SOURCE_PREFIX}{set_info['index']}.c"
+    source_file_path.write_text("\n".join(assets_c), encoding="ascii")
+    return source_file_path
+
+
+def write_registry_source(set_infos):
+    registry_c = [
+        "#include \"image_assets.h\"",
+        "",
+        "const image_gif_set_t image_gif_sets[IMAGE_GIF_SET_COUNT] = {",
+    ]
+
+    for set_info in set_infos:
+        set_index = set_info["index"]
+        registry_c.append(
+            f"\t{{ IMAGE_GIF_SET_FOLDER_{set_index}, IMAGE_ASSET_COUNT_{set_index}, image_assets_{set_index} }},"
+        )
+
+    registry_c.extend(["};", ""])
+    registry_file_path = CODE_DIR / REGISTRY_SOURCE_FILE
+    registry_file_path.write_text("\n".join(registry_c), encoding="ascii")
+    return registry_file_path
+
 
 def main():
     CODE_DIR.mkdir(parents=True, exist_ok=True)
-    image_patterns = ("*.jpg", "*.jpeg", "*.png")
-    images = []
-    for pattern in image_patterns:
-        images.extend(SOURCE_DIR.rglob(pattern))
-    images = sorted(images, key=image_path_sort_key)
-    if not images:
-        raise SystemExit(f"No image files found in {SOURCE_DIR}")
 
-    total_images = len(images)
-    images = select_images_per_folder(images, FRAME_STRIDE_PER_FOLDER)
+    set_dirs = list_set_directories()
+    set_infos = []
 
-    used_symbols = set()
-    assets = [build_asset(image_path, used_symbols) for image_path in images]
+    for index, set_dir in enumerate(set_dirs, start=1):
+        frames = load_set_frames(set_dir)
+        used_symbols = set()
+        assets = [build_asset(frame_path, set_dir, used_symbols) for frame_path in frames]
+
+        set_infos.append(
+            {
+                "index": index,
+                "set_dir_name": set_dir.name,
+                "assets": assets,
+                "asset_count": len(assets),
+            }
+        )
 
     remove_legacy_generated_files()
-    write_assets_files(assets)
+    write_assets_header(set_infos)
 
-    print(
-        f"Selected {len(images)} images from {total_images} total "
-        f"(every {FRAME_STRIDE_PER_FOLDER} in each folder)"
-    )
-    print(f"Generated {len(assets)} RGB565 image assets in {CODE_DIR}")
-    for asset in assets:
-        print(f"{asset['name']}: {asset['width']}x{asset['height']} -> {asset['symbol']}")
+    generated_source_files = []
+    for set_info in set_infos:
+        generated_source_files.append(write_set_source(set_info))
+        print(
+            f"Generated {generated_source_files[-1].name}: "
+            f"set {set_info['index']} ({set_info['set_dir_name']}, frames={set_info['asset_count']})"
+        )
+
+    registry_file = write_registry_source(set_infos)
+    generated_source_files.append(registry_file)
+    print(f"Generated {registry_file.name}: set registry ({len(set_infos)} sets)")
+
+    print(f"Generated assets header: {CODE_DIR / 'image_assets.h'}")
 
 
 if __name__ == "__main__":

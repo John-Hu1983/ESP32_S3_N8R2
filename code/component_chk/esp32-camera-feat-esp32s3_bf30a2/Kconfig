@@ -1,0 +1,44 @@
+menu "Camera configuration"
+
+    config BF30A2_SUPPORT
+        bool "Support BF30A2(BYD30A2) SPI"
+        default y
+        help 
+            Enable this option if you want to use the BF30A2.
+            Disable this option to save memory.
+
+    choice SCCB_HARDWARE_I2C_PORT
+        bool "I2C peripheral to use for SCCB"
+        default SCCB_HARDWARE_I2C_PORT1
+
+        config SCCB_HARDWARE_I2C_PORT0
+            bool "I2C0"
+        config SCCB_HARDWARE_I2C_PORT1
+            bool "I2C1"
+
+    endchoice
+
+    config SCCB_CLK_FREQ
+    int "SCCB clk frequency"
+    default 100000
+    range 100000 400000
+    help
+        Increasing this value can reduce the initialization time of the sensor.
+        Please refer to the relevant instructions of the sensor to adjust the value.
+
+    choice CAMERA_TASK_PINNED_TO_CORE
+        bool "Camera task pinned to core"
+        default CAMERA_NO_AFFINITY
+        help
+            Pin the camera handle task to a certain core(0/1). It can also be done automatically choosing NO_AFFINITY.
+
+        config CAMERA_CORE0
+            bool "CORE0"
+        config CAMERA_CORE1
+            bool "CORE1"
+        config CAMERA_NO_AFFINITY
+            bool "NO_AFFINITY"
+
+    endchoice
+
+endmenu

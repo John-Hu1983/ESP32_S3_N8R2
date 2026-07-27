@@ -6,7 +6,8 @@
 #include "image_assets.h"
 
 #define TAG "image_slideshow"
-#define SLIDE_INTERVAL_MS 333
+#define FRAME_INTERVAL_MS 50
+#define GIF_GAP_MS 900
 
 static void stop_on_error(const char *operation, esp_err_t error)
 {
@@ -36,13 +37,18 @@ static void draw_centered_image(const image_rgb565_t *image, uint16_t index)
         stop_on_error("lcd_st7365p_draw_image", error);
     }
 
-    ESP_LOGI(TAG, "Display image %u/%u", (unsigned)(index + 1), (unsigned)IMAGE_ASSET_COUNT);
+    ESP_LOGI(TAG, "Display frame %u", (unsigned)(index + 1));
 }
 
-/*
- * Application entry point.
- * Initialize LCD, then display one image every second.
- */
+static void clear_screen(void)
+{
+    esp_err_t error = lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), 0x0000);
+    if (error != ESP_OK)
+    {
+        stop_on_error("lcd_st7365p_fill_rect", error);
+    }
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Image slideshow start");
@@ -53,27 +59,47 @@ void app_main(void)
         stop_on_error("lcd_st7365p_init", error);
     }
 
-    if (IMAGE_ASSET_COUNT == 0)
+    if (IMAGE_GIF_SET_COUNT == 0)
     {
-        ESP_LOGE(TAG, "No images found in image_assets");
+        ESP_LOGE(TAG, "No GIF sets found in image_assets");
         while (1)
         {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 
-    uint16_t image_index = 0;
-    lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), 0x0000);
+    clear_screen();
+
     while (1)
     {
-        draw_centered_image(&image_assets[image_index], image_index);
-
-        image_index++;
-        if (image_index >= IMAGE_ASSET_COUNT)
+        for (uint16_t set_index = 0; set_index < IMAGE_GIF_SET_COUNT; set_index++)
         {
-            image_index = 0;
-        }
+            const image_gif_set_t *set = &image_gif_sets[set_index];
+            const char *set_name = (set->folder != NULL) ? set->folder : "unknown";
 
-        vTaskDelay(pdMS_TO_TICKS(SLIDE_INTERVAL_MS));
+            if ((set->frames == NULL) || (set->frame_count == 0))
+            {
+                ESP_LOGW(TAG, "Skip GIF set %u/%u: invalid frame data", (unsigned)(set_index + 1), (unsigned)IMAGE_GIF_SET_COUNT);
+                continue;
+            }
+
+            ESP_LOGI(
+                TAG,
+                "Play GIF set %u/%u: %s (%u frames)",
+                (unsigned)(set_index + 1),
+                (unsigned)IMAGE_GIF_SET_COUNT,
+                set_name,
+                (unsigned)set->frame_count
+            );
+
+            for (uint16_t frame_index = 0; frame_index < set->frame_count; frame_index++)
+            {
+                draw_centered_image(&set->frames[frame_index], frame_index);
+                vTaskDelay(pdMS_TO_TICKS(FRAME_INTERVAL_MS));
+            }
+
+            clear_screen();
+            vTaskDelay(pdMS_TO_TICKS(GIF_GAP_MS));
+        }
     }
 }

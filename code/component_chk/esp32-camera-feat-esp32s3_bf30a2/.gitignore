@@ -1,0 +1,8 @@
+*.DS_Store
+*.lock
+.vscode
+**/build
+**/sdkconfig
+**/sdkconfig.old
+
+*.bin

@@ -1,0 +1,32 @@
+{
+  "target_size": [
+    480,
+    320
+  ],
+  "gif_sets": [
+    {
+      "index": 1,
+      "set_dir": "01_face_idle_allaround",
+      "source_gif": "2 face_idle_allaround-(10-frame).gif",
+      "frame_count": 10
+    },
+    {
+      "index": 2,
+      "set_dir": "02_face_printing_truck",
+      "source_gif": "3. face_printing_truck-(10-frame).gif",
+      "frame_count": 10
+    },
+    {
+      "index": 3,
+      "set_dir": "03_face_sleep",
+      "source_gif": "4. face_sleep-(10-frame).gif",
+      "frame_count": 10
+    },
+    {
+      "index": 4,
+      "set_dir": "04_face_wakeup",
+      "source_gif": "face_wakeup-(10-frame).gif",
+      "frame_count": 10
+    }
+  ]
+}
