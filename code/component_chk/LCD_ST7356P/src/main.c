@@ -89,13 +89,16 @@ void app_main(void)
                 (unsigned)(set_index + 1),
                 (unsigned)IMAGE_GIF_SET_COUNT,
                 set_name,
-                (unsigned)set->frame_count
-            );
+                (unsigned)set->frame_count);
 
-            for (uint16_t frame_index = 0; frame_index < set->frame_count; frame_index++)
+            for (uint8_t times = 0; times < 3; times++)
             {
-                draw_centered_image(&set->frames[frame_index], frame_index);
-                vTaskDelay(pdMS_TO_TICKS(FRAME_INTERVAL_MS));
+                ESP_LOGI(TAG, "Play GIF set %u/%u: %s (%u frames) - loop %u/2", (unsigned)(set_index + 1), (unsigned)IMAGE_GIF_SET_COUNT, set_name, (unsigned)set->frame_count, (unsigned)(times + 1));
+                for (uint16_t frame_index = 0; frame_index < set->frame_count; frame_index++)
+                {
+                    draw_centered_image(&set->frames[frame_index], frame_index);
+                    vTaskDelay(pdMS_TO_TICKS(FRAME_INTERVAL_MS));
+                }
             }
 
             clear_screen();
