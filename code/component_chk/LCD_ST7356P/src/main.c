@@ -83,21 +83,27 @@ void app_main(void)
                 continue;
             }
 
-            ESP_LOGI(
-                TAG,
-                "Play GIF set %u/%u: %s (%u frames)",
-                (unsigned)(set_index + 1),
-                (unsigned)IMAGE_GIF_SET_COUNT,
-                set_name,
-                (unsigned)set->frame_count);
-
-            for (uint8_t times = 0; times < 3; times++)
+             for (uint8_t times = 0; times < 3; times++)
             {
                 ESP_LOGI(TAG, "Play GIF set %u/%u: %s (%u frames) - loop %u/2", (unsigned)(set_index + 1), (unsigned)IMAGE_GIF_SET_COUNT, set_name, (unsigned)set->frame_count, (unsigned)(times + 1));
                 for (uint16_t frame_index = 0; frame_index < set->frame_count; frame_index++)
                 {
+                    uint16_t frame_delay_ms = set->frames[frame_index].delay;
+                    if (frame_delay_ms == 0)
+                    {
+                        frame_delay_ms = FRAME_INTERVAL_MS;
+                    }
+
+                    ESP_LOGI(
+                        TAG,
+                        "debug set_index=%u frame_index=%u times=%u frame_delay_ms=%u",
+                        (unsigned)set_index,
+                        (unsigned)frame_index,
+                        (unsigned)times,
+                        (unsigned)frame_delay_ms);
+
                     draw_centered_image(&set->frames[frame_index], frame_index);
-                    vTaskDelay(pdMS_TO_TICKS(FRAME_INTERVAL_MS));
+                    vTaskDelay(pdMS_TO_TICKS(frame_delay_ms));
                 }
             }
 

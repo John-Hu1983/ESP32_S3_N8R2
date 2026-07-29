@@ -118,7 +118,10 @@ def write_assets_header(set_infos):
         "\tuint16_t width;",
         "\tuint16_t height;",
         "\tconst uint16_t *data;",
+        "\tuint16_t delay;",
         "} image_rgb565_t;",
+        "",
+        "#define 150-DRAW_IMAGE_PERIOD 50",
         "",
         f"#define IMAGE_GIF_SET_COUNT {set_count}",
         "",
@@ -173,7 +176,9 @@ def write_set_source(set_info):
 
     assets_c.append(f"const image_rgb565_t image_assets_{set_index}[IMAGE_ASSET_COUNT_{set_index}] = {{")
     for asset in assets:
-        assets_c.append(f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']} }},")
+        assets_c.append(
+            f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']}, 150-DRAW_IMAGE_PERIOD }},"
+        )
     assets_c.extend(["};", ""])
 
     source_file_path = CODE_DIR / f"{SET_SOURCE_PREFIX}{set_info['index']}.c"

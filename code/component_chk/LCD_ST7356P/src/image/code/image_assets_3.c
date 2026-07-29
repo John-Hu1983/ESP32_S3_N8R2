@@ -128040,15 +128040,16 @@ static const uint16_t frame_009_rgb565[153600] = {
 	0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
-const image_rgb565_t image_assets_3[IMAGE_ASSET_COUNT_3] = {
-	{ 480, 320, frame_000_rgb565 },
-	{ 480, 320, frame_001_rgb565 },
-	{ 480, 320, frame_002_rgb565 },
-	{ 480, 320, frame_003_rgb565 },
-	{ 480, 320, frame_004_rgb565 },
-	{ 480, 320, frame_005_rgb565 },
-	{ 480, 320, frame_006_rgb565 },
-	{ 480, 320, frame_007_rgb565 },
-	{ 480, 320, frame_008_rgb565 },
-	{ 480, 320, frame_009_rgb565 },
+const image_rgb565_t image_face_printing[IMAGE_ASSET_COUNT_3] = {
+	{ 480, 320, frame_000_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_001_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_002_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_003_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_004_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_005_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_006_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_007_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_008_rgb565, 150-DRAW_IMAGE_PERIOD },
+	{ 480, 320, frame_009_rgb565, 150-DRAW_IMAGE_PERIOD },
 };
+

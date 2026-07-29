@@ -4,11 +4,15 @@
 #include <stdint.h>
 #include "image_asset_config.h"
 
-typedef struct {
+typedef struct
+{
 	uint16_t width;
 	uint16_t height;
 	const uint16_t *data;
+	uint16_t delay;
 } image_rgb565_t;
+
+#define DRAW_IMAGE_PERIOD 83
 
 #define IMAGE_GIF_SET_COUNT 4
 
@@ -22,11 +26,12 @@ typedef struct {
 #define IMAGE_GIF_SET_FOLDER_4 "04_face_wakeup"
 
 extern const image_rgb565_t image_assets_1[IMAGE_ASSET_COUNT_1];
-extern const image_rgb565_t image_assets_2[IMAGE_ASSET_COUNT_2];
-extern const image_rgb565_t image_assets_3[IMAGE_ASSET_COUNT_3];
+extern const image_rgb565_t image_face_sleep[IMAGE_ASSET_COUNT_2];
+extern const image_rgb565_t image_face_printing[IMAGE_ASSET_COUNT_3];
 extern const image_rgb565_t image_assets_4[IMAGE_ASSET_COUNT_4];
 
-typedef struct {
+typedef struct
+{
 	const char *folder;
 	uint16_t frame_count;
 	const image_rgb565_t *frames;
