@@ -555,9 +555,26 @@ esp_err_t lcd_st7365p_init(void)
 	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_INVOFF), TAG, "INVOFF failed");
 #endif
 
+	/* Keep panel dark during startup to avoid visible blank/white flash. */
+	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_DISPOFF), TAG, "DISPOFF failed");
+
+	ESP_LOGI(TAG, "prefill background while panel is off");
+	ESP_RETURN_ON_ERROR(lcd_st7365p_fill_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, LCD_BOOT_BG_COLOR), TAG, "prefill background failed");
+
+	return ESP_OK;
+}
+
+esp_err_t lcd_st7365p_display_on(void)
+{
 	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_DISPON), TAG, "DISPON failed");
 	vTaskDelay(pdMS_TO_TICKS(120));
+	return ESP_OK;
+}
 
+esp_err_t lcd_st7365p_display_off(void)
+{
+	ESP_RETURN_ON_ERROR(lcd_write_command(LCD_CMD_DISPOFF), TAG, "DISPOFF failed");
+	vTaskDelay(pdMS_TO_TICKS(20));
 	return ESP_OK;
 }
 

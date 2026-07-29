@@ -12,6 +12,7 @@
 #define LCD_CMD_INVON   0x21
 #define LCD_CMD_COLMOD  0x3A
 #define LCD_CMD_MADCTL  0x36
+#define LCD_CMD_DISPOFF 0x28
 #define LCD_CMD_CASET   0x2A
 #define LCD_CMD_RASET   0x2B
 #define LCD_CMD_RAMWR   0x2C
@@ -38,6 +39,8 @@ esp_err_t lcd_st7365p_draw_area_rgb565_be(uint16_t x,
 										  uint16_t height,
 										  const uint8_t *rgb565_be,
 										  size_t byte_count);
+esp_err_t lcd_st7365p_display_on(void);
+esp_err_t lcd_st7365p_display_off(void);
 esp_err_t lcd_st7365p_draw_demo(void);
 
 #endif

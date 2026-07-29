@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "config.h"
 #include "dev/lcd_st7365p.h"
 #include "image_assets.h"
 
@@ -42,7 +43,7 @@ static void draw_centered_image(const image_rgb565_t *image, uint16_t index)
 
 static void clear_screen(void)
 {
-    esp_err_t error = lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), 0x0000);
+    esp_err_t error = lcd_st7365p_fill_rect(0, 0, lcd_st7365p_get_width(), lcd_st7365p_get_height(), LCD_BOOT_BG_COLOR);
     if (error != ESP_OK)
     {
         stop_on_error("lcd_st7365p_fill_rect", error);
@@ -69,6 +70,18 @@ void app_main(void)
     }
 
     clear_screen();
+
+    const image_gif_set_t *boot_set = &image_gif_sets[0];
+    if ((boot_set->frames != NULL) && (boot_set->frame_count > 0))
+    {
+        draw_centered_image(&boot_set->frames[0], 0);
+    }
+
+    error = lcd_st7365p_display_on();
+    if (error != ESP_OK)
+    {
+        stop_on_error("lcd_st7365p_display_on", error);
+    }
 
     while (1)
     {
