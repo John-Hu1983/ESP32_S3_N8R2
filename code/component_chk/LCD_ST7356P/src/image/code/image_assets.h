@@ -25,10 +25,10 @@ typedef struct
 #define IMAGE_ASSET_COUNT_4 10
 #define IMAGE_GIF_SET_FOLDER_4 "04_face_wakeup"
 
-extern const image_rgb565_t image_assets_1[IMAGE_ASSET_COUNT_1];
-extern const image_rgb565_t image_face_sleep[IMAGE_ASSET_COUNT_2];
-extern const image_rgb565_t image_face_printing[IMAGE_ASSET_COUNT_3];
-extern const image_rgb565_t image_assets_4[IMAGE_ASSET_COUNT_4];
+extern const image_rgb565_t image_face_idle[IMAGE_ASSET_COUNT_1];
+extern const image_rgb565_t image_face_printing[IMAGE_ASSET_COUNT_2];
+extern const image_rgb565_t image_face_sleep[IMAGE_ASSET_COUNT_3];
+extern const image_rgb565_t image_face_wakeup[IMAGE_ASSET_COUNT_4];
 
 typedef struct
 {
