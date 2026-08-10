@@ -10,6 +10,7 @@ SOURCE_SETS_DIR = SCRIPT_DIR / "source" / "gif_sets"
 CODE_DIR = SCRIPT_DIR / "code"
 SET_SOURCE_PREFIX = "image_assets_"
 REGISTRY_SOURCE_FILE = "image_gif_sets.c"
+DEFAULT_FRAME_DELAY_MS = 50
 
 
 def rgb888_to_rgb565(red, green, blue):
@@ -35,6 +36,25 @@ def natural_sort_key(value):
         else:
             key.append((1, part))
     return key
+
+
+def strip_set_order_prefix(value):
+    return re.sub(r"^\d+\s*[_-]*\s*", "", value)
+
+
+def build_unique_set_key(set_dir_name, used_set_keys):
+    base_key = sanitize_identifier(strip_set_order_prefix(set_dir_name))
+    if base_key == "image":
+        base_key = "gif_set"
+
+    set_key = base_key
+    next_index = 2
+    while set_key in used_set_keys:
+        set_key = f"{base_key}_{next_index}"
+        next_index += 1
+
+    used_set_keys.add(set_key)
+    return set_key
 
 
 def list_set_directories():
@@ -121,22 +141,26 @@ def write_assets_header(set_infos):
         "\tuint16_t delay;",
         "} image_rgb565_t;",
         "",
-        "#define 150-DRAW_IMAGE_PERIOD 50",
+        "#ifndef IMAGE_ASSET_FRAME_DELAY_MS",
+        f"#define IMAGE_ASSET_FRAME_DELAY_MS {DEFAULT_FRAME_DELAY_MS}",
+        "#endif",
         "",
         f"#define IMAGE_GIF_SET_COUNT {set_count}",
         "",
     ]
 
     for set_info in set_infos:
-        set_index = set_info["index"]
-        assets_h.append(f"#define IMAGE_ASSET_COUNT_{set_index} {set_info['asset_count']}")
-        assets_h.append(f"#define IMAGE_GIF_SET_FOLDER_{set_index} \"{set_info['set_dir_name']}\"")
+        set_macro = set_info["set_macro"]
+        assets_h.append(f"#define IMAGE_ASSET_COUNT_{set_macro} {set_info['asset_count']}")
+        assets_h.append(f"#define IMAGE_GIF_SET_FOLDER_{set_macro} \"{set_info['set_dir_name']}\"")
 
     assets_h.append("")
 
     for set_info in set_infos:
-        set_index = set_info["index"]
-        assets_h.append(f"extern const image_rgb565_t image_assets_{set_index}[IMAGE_ASSET_COUNT_{set_index}];")
+        set_macro = set_info["set_macro"]
+        assets_h.append(
+            f"extern const image_rgb565_t {set_info['asset_symbol']}[IMAGE_ASSET_COUNT_{set_macro}];"
+        )
 
     assets_h.extend(
         [
@@ -159,6 +183,8 @@ def write_assets_header(set_infos):
 def write_set_source(set_info):
     assets = set_info["assets"]
     set_index = set_info["index"]
+    set_macro = set_info["set_macro"]
+    asset_symbol = set_info["asset_symbol"]
 
     assets_c = [
         "#include \"image_assets.h\"",
@@ -174,10 +200,10 @@ def write_set_source(set_info):
         assets_c.append("};")
         assets_c.append("")
 
-    assets_c.append(f"const image_rgb565_t image_assets_{set_index}[IMAGE_ASSET_COUNT_{set_index}] = {{")
+    assets_c.append(f"const image_rgb565_t {asset_symbol}[IMAGE_ASSET_COUNT_{set_macro}] = {{")
     for asset in assets:
         assets_c.append(
-            f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']}, 150-DRAW_IMAGE_PERIOD }},"
+            f"\t{{ {asset['width']}, {asset['height']}, {asset['symbol']}, IMAGE_ASSET_FRAME_DELAY_MS }},"
         )
     assets_c.extend(["};", ""])
 
@@ -194,9 +220,11 @@ def write_registry_source(set_infos):
     ]
 
     for set_info in set_infos:
-        set_index = set_info["index"]
+        set_macro = set_info["set_macro"]
+        asset_symbol = set_info["asset_symbol"]
+        registry_c.append(f"\t// {set_info['set_dir_name']}")
         registry_c.append(
-            f"\t{{ IMAGE_GIF_SET_FOLDER_{set_index}, IMAGE_ASSET_COUNT_{set_index}, image_assets_{set_index} }},"
+            f"\t{{ IMAGE_GIF_SET_FOLDER_{set_macro}, IMAGE_ASSET_COUNT_{set_macro}, {asset_symbol} }},"
         )
 
     registry_c.extend(["};", ""])
@@ -210,16 +238,20 @@ def main():
 
     set_dirs = list_set_directories()
     set_infos = []
+    used_set_keys = set()
 
     for index, set_dir in enumerate(set_dirs, start=1):
         frames = load_set_frames(set_dir)
         used_symbols = set()
         assets = [build_asset(frame_path, set_dir, used_symbols) for frame_path in frames]
+        set_key = build_unique_set_key(set_dir.name, used_set_keys)
 
         set_infos.append(
             {
                 "index": index,
                 "set_dir_name": set_dir.name,
+                "set_macro": set_key.upper(),
+                "asset_symbol": f"image_assets_{set_key}",
                 "assets": assets,
                 "asset_count": len(assets),
             }

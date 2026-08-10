@@ -7,13 +7,13 @@ set(CONVERT_IMAGE_SCRIPT ${IMAGE_SCRIPT_DIR}/convert_images_to_rgb565.py)
 set(IMAGE_CONFIG_HEADER ${IMAGE_SCRIPT_DIR}/code/image_asset_config.h)
 set(IMAGE_MANIFEST ${IMAGE_SCRIPT_DIR}/source/gif_sets/manifest.json)
 set(IMAGE_ASSETS_H ${IMAGE_SCRIPT_DIR}/code/image_assets.h)
-set(image_face_idle_C ${IMAGE_SCRIPT_DIR}/code/image_face_idle.c)
-set(IMAGE_ASSETS_2_C ${IMAGE_SCRIPT_DIR}/code/image_face_printing.c)
-set(IMAGE_ASSETS_3_C ${IMAGE_SCRIPT_DIR}/code/image_face_wakeup.c)
-set(IMAGE_ASSETS_4_C ${IMAGE_SCRIPT_DIR}/code/image_face_sleep.c)
+set(IMAGE_ASSETS_1_C ${IMAGE_SCRIPT_DIR}/code/image_assets_1.c)
+set(IMAGE_ASSETS_2_C ${IMAGE_SCRIPT_DIR}/code/image_assets_2.c)
+set(IMAGE_ASSETS_3_C ${IMAGE_SCRIPT_DIR}/code/image_assets_3.c)
+set(IMAGE_ASSETS_4_C ${IMAGE_SCRIPT_DIR}/code/image_assets_4.c)
 set(IMAGE_GIF_SETS_C ${IMAGE_SCRIPT_DIR}/code/image_gif_sets.c)
 set(IMAGE_ASSET_SOURCE_FILES
-	${image_face_idle_C}
+	${IMAGE_ASSETS_1_C}
 	${IMAGE_ASSETS_2_C}
 	${IMAGE_ASSETS_3_C}
 	${IMAGE_ASSETS_4_C}

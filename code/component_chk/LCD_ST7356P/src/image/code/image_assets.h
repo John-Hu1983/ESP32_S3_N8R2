@@ -4,34 +4,34 @@
 #include <stdint.h>
 #include "image_asset_config.h"
 
-typedef struct
-{
+typedef struct {
 	uint16_t width;
 	uint16_t height;
 	const uint16_t *data;
 	uint16_t delay;
 } image_rgb565_t;
 
-#define DRAW_IMAGE_PERIOD 83
+#ifndef IMAGE_ASSET_FRAME_DELAY_MS
+#define IMAGE_ASSET_FRAME_DELAY_MS 50
+#endif
 
 #define IMAGE_GIF_SET_COUNT 4
 
-#define IMAGE_ASSET_COUNT_1 10
-#define IMAGE_GIF_SET_FOLDER_1 "01_face_idle_allaround"
-#define IMAGE_ASSET_COUNT_2 10
-#define IMAGE_GIF_SET_FOLDER_2 "02_face_printing_truck"
-#define IMAGE_ASSET_COUNT_3 10
-#define IMAGE_GIF_SET_FOLDER_3 "03_face_sleep"
-#define IMAGE_ASSET_COUNT_4 10
-#define IMAGE_GIF_SET_FOLDER_4 "04_face_wakeup"
+#define IMAGE_ASSET_COUNT_FACE_IDLE_ALLAROUND 10
+#define IMAGE_GIF_SET_FOLDER_FACE_IDLE_ALLAROUND "01_face_idle_allaround"
+#define IMAGE_ASSET_COUNT_FACE_PRINTING_TRUCK 10
+#define IMAGE_GIF_SET_FOLDER_FACE_PRINTING_TRUCK "02_face_printing_truck"
+#define IMAGE_ASSET_COUNT_FACE_SLEEP 10
+#define IMAGE_GIF_SET_FOLDER_FACE_SLEEP "03_face_sleep"
+#define IMAGE_ASSET_COUNT_FACE_WAKEUP 10
+#define IMAGE_GIF_SET_FOLDER_FACE_WAKEUP "04_face_wakeup"
 
-extern const image_rgb565_t image_face_idle[IMAGE_ASSET_COUNT_1];
-extern const image_rgb565_t image_face_printing[IMAGE_ASSET_COUNT_2];
-extern const image_rgb565_t image_face_sleep[IMAGE_ASSET_COUNT_3];
-extern const image_rgb565_t image_face_wakeup[IMAGE_ASSET_COUNT_4];
+extern const image_rgb565_t image_assets_face_idle_allaround[IMAGE_ASSET_COUNT_FACE_IDLE_ALLAROUND];
+extern const image_rgb565_t image_assets_face_printing_truck[IMAGE_ASSET_COUNT_FACE_PRINTING_TRUCK];
+extern const image_rgb565_t image_assets_face_sleep[IMAGE_ASSET_COUNT_FACE_SLEEP];
+extern const image_rgb565_t image_assets_face_wakeup[IMAGE_ASSET_COUNT_FACE_WAKEUP];
 
-typedef struct
-{
+typedef struct {
 	const char *folder;
 	uint16_t frame_count;
 	const image_rgb565_t *frames;

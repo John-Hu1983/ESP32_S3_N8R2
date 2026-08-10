@@ -96,7 +96,7 @@ void app_main(void)
                 continue;
             }
 
-             for (uint8_t times = 0; times < 3; times++)
+             for (uint8_t times = 0; times < 1; times++)
             {
                 ESP_LOGI(TAG, "Play GIF set %u/%u: %s (%u frames) - loop %u/2", (unsigned)(set_index + 1), (unsigned)IMAGE_GIF_SET_COUNT, set_name, (unsigned)set->frame_count, (unsigned)(times + 1));
                 for (uint16_t frame_index = 0; frame_index < set->frame_count; frame_index++)
